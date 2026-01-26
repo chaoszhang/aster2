@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="aster2.vcxproj" Id="f9def0b7-58bb-4fe4-875a-000cc49080f2" />
+</Solution>
