@@ -44,5 +44,11 @@
     <ClInclude Include="optimization_algorithm.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="alignment_utilities.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="driver.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

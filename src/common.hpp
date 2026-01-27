@@ -31,6 +31,7 @@ class ChangeLog {
 	struct Shared {
 		vector<Change> all;
 		unordered_map<string, vector<Change> > byCode;
+		string globalVersion;
 	};
 
 public:
@@ -55,7 +56,7 @@ public:
 		}
 	}
 
-	template<bool isGlobal> static std::ostream& displayAll(std::ostream& out, vector<Change>& changes) {
+	template<bool isGlobal> static vector<string> versioning(vector<Change>& changes) {
 		string PREFIX = (isGlobal) ? "v2."s : "v"s;
 		std::sort(changes.begin(), changes.end());
 		string lastDate = "1994-12-07"s, updates, version;
@@ -87,8 +88,17 @@ public:
 			updates += change.author + " - "s + change.description + "\n"s;
 		}
 		blocks.push_back(version + updates);
-		for (const string& block : blocks | std::views::reverse) out << block;
-		return out;
+		if (isGlobal) shared.globalVersion = (blocks.size() > 1) ? version : "v2.0.0";
+		return blocks;
+	}
+
+	template<bool isGlobal> static void displayAll(std::ostream& out, vector<Change>& changes) {
+		for (const string& block : versioning<isGlobal>(changes) | std::views::reverse) out << block;
+	}
+
+	string static getGlobalVersion() {
+		versioning<true>(shared.all);
+		return shared.globalVersion;
 	}
 };
 ChangeLog::Shared ChangeLog::shared;
@@ -114,23 +124,19 @@ public:
 
 	LogInfo(int verbose = DEFAULT_VERBOSE) : verbose(verbose) {}
 
-	template<int verbose_delta = 0> void logging(auto const& t) const requires requires { {std::cerr << t}; } {
-		if (verbose + verbose_delta <= shared.errVerbose) std::cerr << t;
-		if (shared.fout && verbose + verbose_delta <= shared.logVerbose) (*shared.fout) << t;
-	}
-
-	template<int verbose_delta = 0> void logging(std::ostream& t(std::ostream&)) const {
-		if (verbose + verbose_delta <= shared.errVerbose) std::cerr << t;
-		if (shared.fout && verbose + verbose_delta <= shared.logVerbose) (*shared.fout) << t;
+	template<int verbose_delta> LogInfo vlog() const {
+		return LogInfo(verbose + verbose_delta);
 	}
 
 	LogInfo const& operator<<(auto const& t) const requires requires { {std::cerr << t}; } {
-		logging(t);
+		if (verbose <= shared.errVerbose) std::cerr << t;
+		if (shared.fout && verbose <= shared.logVerbose) (*shared.fout) << t;
 		return log;
 	}
 
 	LogInfo const& operator<<(std::ostream&t(std::ostream&)) const {
-		logging(t);
+		if (verbose <= shared.errVerbose) std::cerr << t;
+		if (shared.fout && verbose <= shared.logVerbose) (*shared.fout) << t;
 		return log;
 	}
 
@@ -141,6 +147,8 @@ public:
 	}
 };
 LogInfo::Shared LogInfo::shared;
+
+template<typename T> concept LOG_OR_OSTREAM = std::same_as<T, const LogInfo> || std::derived_from<T, std::ostream>;
 
 class Attributes: public LogInfo{
 public:
@@ -166,7 +174,7 @@ private:
 	
 public:
 	bool has(string const &attr) const noexcept{
-		return attributes.contains(attr);
+		return attr.size() > 0 && attributes.contains(attr);
 	}
 	
 	template<typename T> bool has(string const &attr) const noexcept{
@@ -241,33 +249,265 @@ public:
 	}
 };
 
-class InputParser : public LogInfo {
+class InputParser : public Attributes {
 	struct Argument {
 		char shortcut;
 		string name, type, description, defaultValue;
 		bool optional, hasDefaultValue;
 		int priority;
-		std::unique_ptr<vector<string> > defaultEquivalence;
+		std::shared_ptr<vector<string> > defaultEquivalence;
 
 		bool operator<(const Argument& other) const noexcept {
-			if (shortcut > 0 && other.shortcut == 0) return true;
-			if (shortcut == 0 && other.shortcut > 0) return false;
+			if (shortcut != 0 && other.shortcut == 0) return true;
+			if (shortcut == 0 && other.shortcut != 0) return false;
 			if (priority != other.priority) return priority > other.priority;
+			if (optional != other.optional) return !optional;
 			return name < other.name;
 		}
 
-		Argument(char shortcut, string const& name, string const& type, string const& description, int priority = 0, bool optional = false, bool hasDefaultValue = false, vector<string> *defaultEquivalence = nullptr) noexcept : shortcut(shortcut), name(name), type(type), description(description), priority(priority), optional(optional), hasDefaultValue(hasDefaultValue), defaultEquivalence(defaultEquivalence){}
+		Argument(){}
+
+		Argument(char shortcut, string const& name, string const& type, string const& description, int priority = 0, bool optional = false, bool hasDefaultValue = false, string defaultValue = "", vector<string>* defaultEquivalence = nullptr) noexcept : shortcut(shortcut), name(name), type(type), description(description), priority(priority), optional(optional), hasDefaultValue(hasDefaultValue), defaultValue(defaultValue), defaultEquivalence(defaultEquivalence) {}
 	};
 
 	vector<Argument> arguments;
+	unordered_map<string, Argument> nameToArgument;
+	unordered_map<char, Argument> shortcutToArgument;
+	string argv0;
+
+	Argument const& parseArg(string const& arg) const {
+		if (arg.rfind("--", 0) == 0) {
+			string name = arg.substr(2);
+			if (name == "help") {
+				displayHelp(std::cout);
+				exit(0);
+			}
+			if (nameToArgument.count(name) == 0) {
+				displayHelp(std::cerr);
+				std::cerr << "Error: Unknown argument " << arg << std::endl;
+				throw std::invalid_argument("Unknown argument");
+			}
+			return nameToArgument.at(name);
+		}
+		else if (arg.rfind("-", 0) == 0 && arg.length() > 1) {
+			char shortcut = arg[1];
+			if (shortcut == 'h') {
+				displayHelp(std::cout);
+				exit(0);
+			}
+			if (shortcutToArgument.count(shortcut) == 0) {
+				displayHelp(std::cerr);
+				std::cerr << "Error: Unknown argument " << arg << std::endl;
+				throw std::invalid_argument("Unknown argument");
+			}
+			return shortcutToArgument.at(shortcut);
+		}
+		else {
+			displayHelp(std::cerr);
+			std::cerr << "Error: Invalid argument format near: " << arg << std::endl;
+			throw std::invalid_argument("Invalid argument format");
+		}
+	}
+
+	template<bool needParseArg = true> void parse(const vector<string>& argv) {
+		size_t argc = argv.size();
+		for (int i = 0; i < argc; ++i) {
+			if (needParseArg && i + 1 == argc && argv[i].size() > 0 && argv[i][0] != '-') {
+				set("input", argv[i]);
+				log << "Warning: " << argv[i] << " is interpreted as: -i " << argv[i] << std::endl;
+				break;
+			}
+			Argument const& argument = (needParseArg) ? parseArg(argv[i]) : nameToArgument.at(argv[i]);
+			if (argument.type == "flag") {
+				set(argument.name, true);
+				if (argument.defaultEquivalence) parse<false>(*argument.defaultEquivalence);
+			}
+			else if (i + 1 < argc) {
+				string value = argv[++i];
+				if (argument.type == "integer") {
+					size_t realValue;
+					try {
+						realValue = std::stoull(value);
+					}
+					catch (const std::exception& e) {
+						displayHelp(std::cerr);
+						std::cerr << "Error: Invalid integer value for argument " << argument.name << ": " << value << std::endl;
+						throw std::invalid_argument("Invalid integer value");
+					}
+					set(argument.name, realValue);
+				}
+				else if (argument.type == "numeric") {
+					double realValue;
+					try {
+						realValue = std::stod(value);
+					}
+					catch (const std::exception& e) {
+						displayHelp(std::cerr);
+						std::cerr << "Error: Invalid numeric value for argument " << argument.name << ": " << value << std::endl;
+						throw std::invalid_argument("Invalid numeric value");
+					}
+					set(argument.name, realValue);
+				}
+				else if (argument.type == "string") {
+					set(argument.name, value);
+				}
+				else {
+					std::cerr << "Error: Unknown argument type for argument " << argument.name << ". Please fill a bug report! Many thanks!" << std::endl;
+					throw std::invalid_argument("Unknown argument type");
+				}
+			}
+			else {
+				displayHelp(std::cerr);
+				std::cerr << "Error: Missing value for argument " << argument.name << std::endl;
+				throw std::invalid_argument("Missing value for argument");
+			}
+		}
+	}
 
 public:
-	InputParser(int verbose = LogInfo::DEFAULT_VERBOSE) : LogInfo(verbose) {}
+	InputParser() { verbose = 0; }
 
 	template<typename... Args> void addArgument(Args... args) noexcept requires requires { {Argument{ std::forward<Args>(args)... } }; } {
-		arguments.emplace_back(std::forward<Args>(args)...);
+		Argument argument(std::forward<Args>(args)...);
+		arguments.push_back(argument);
+		nameToArgument[argument.name] = argument;
+		if (argument.shortcut > 0) shortcutToArgument[argument.shortcut] = argument;
+	}
+	
+	void displayHelp(std::ostream& out) const {
+		out << get<string>("FULL_NAME") << " " << ChangeLog::getGlobalVersion() << std::endl;
+		out << "Available arguments:" << std::endl;
+		for (Argument const& argument : arguments) {
+			out << "  ";
+			if (argument.shortcut > 0) out << "-" << argument.shortcut << ", ";
+			else out << "    ";
+			out << "--" << argument.name << " <" << argument.type << "> : " << argument.description;
+			if (argument.optional) out << " (optional";
+			else out << " (required";
+			if (argument.hasDefaultValue) out << ", default=" << argument.defaultValue;
+			out << ")" << std::endl;
+		}
+	}
+
+	void sortArguments() {
+		std::sort(arguments.begin(), arguments.end());
+		vector<Argument*> argumentPtrs;
+		for (Argument& argument : arguments) argumentPtrs.push_back(&argument);
+		vector<Argument> newArguments;
+		std::sort(argumentPtrs.begin(), argumentPtrs.end(), [](Argument* a, Argument* b) -> bool { return *a < *b; });
+		for (Argument* argumentPtr : argumentPtrs) newArguments.push_back(*argumentPtr);
+		arguments = newArguments;
+	}
+
+	void parse(int argc, char* argv[]) {
+		argv0 = argv[0];
+		vector<string> args;
+		for (int i = 1; i < argc; ++i) args.push_back(string(argv[i]));
+		parse(args);
+		sortArguments();
+		for (Argument const& argument : arguments) {
+			if (!has(argument.name)) {
+				if (argument.optional && argument.hasDefaultValue) {
+					if (argument.type == "integer") {
+						try {
+							size_t defaultValue = std::stoull(argument.defaultValue);
+							set(argument.name, defaultValue);
+						}
+						catch (const std::exception& e) {
+							std::cerr << "Error: Invalid default integer value for argument " << argument.name << ": " << argument.defaultValue << ". Please fill a bug report! Many thanks!" << std::endl;
+							throw std::invalid_argument("Invalid default integer value");
+						}
+					}
+					else if (argument.type == "numeric") {
+						try {
+							double defaultValue = std::stod(argument.defaultValue);
+							set(argument.name, defaultValue);
+						}
+						catch (const std::exception& e) {
+							std::cerr << "Error: Invalid default numeric value for argument " << argument.name << ": " << argument.defaultValue << ". Please fill a bug report! Many thanks!" << std::endl;
+							throw std::invalid_argument("Invalid default numeric value");
+						}
+					}
+					else if (argument.type == "string") set(argument.name, argument.defaultValue);
+					else {
+						displayHelp(std::cerr);
+						std::cerr << "Error: Unknown argument type for argument " << argument.name << ". Please fill a bug report! Many thanks!" << std::endl;
+						throw std::invalid_argument("Unknown argument type");
+					}
+				}
+				else if (!argument.optional) {
+					displayHelp(std::cerr);
+					std::cerr << "Error: Missing required argument --" << argument.name << std::endl;
+					throw std::invalid_argument("Missing required argument");
+				}
+			}
+		}
+	}
+
+	void print() {
+		log << get<string>("FULL_NAME") << " " << ChangeLog::getGlobalVersion() << std::endl;
+		log << argv0;
+		for (Argument const& argument : arguments) {
+			if (has(argument.name)) {
+				log << " --" << argument.name;
+				if (argument.type == "integer") log << " " << get<size_t>(argument.name);
+				else if (argument.type == "numeric") log << " " << get<double>(argument.name);
+				else if (argument.type == "string") log << " " << get<string>(argument.name);
+				else if (argument.type != "flag") {
+					std::cerr << "Error: Unknown argument type for argument " << argument.name << ". Please fill a bug report! Many thanks!" << std::endl;
+					throw std::invalid_argument("Unknown argument type");
+				}
+			}
+		}
+		log << std::endl;
 	}
 };
+
+};
+common::InputParser	ARG;
+
+namespace common{
+
+class TaxonName2ID {
+	vector<string> names;
+	unordered_map<string, size_t> name2id;
+	unordered_map<string, string> realName;
+	bool mapParsed = false;
+
+public:
+	void parseMap() {
+		if (mapParsed) return;
+		mapParsed = true;
+		if (!ARG.has("mapping")) return;
+		std::ifstream fin(ARG.get<string>("mapping"));
+		if (!fin.is_open()) {
+			std::cerr << "Error: Unable to open mapping file: " << ARG.get<string>("mapping") << std::endl;
+			throw std::invalid_argument("Unable to open mapping file");
+		}
+		string geneName, speciesName;
+		while (fin >> geneName) {
+			fin >> speciesName;
+			realName[geneName] = speciesName;
+		}
+	}
+
+	size_t operator[](string const& name) {
+		parseMap();
+		string real_name = realName.contains(name) ? realName.at(name) : name;
+		if (!name2id.contains(real_name)) {
+			name2id[real_name] = names.size();
+			names.push_back(real_name);
+		}
+		return name2id.at(real_name);
+	}
+
+	string operator[](size_t iTaxon) const noexcept{
+		return names[iTaxon];
+	}
+	size_t nTaxa() const noexcept {
+		return names.size();
+	}
+} taxonName2ID;
 
 template<template<typename> typename T, typename... Args> concept ATTRIBUTES_DISPLAYABLE = requires(Attributes attrs, std::ostream &out, T<Args> const &... args){
 	{attrs.template displayAttributes<Args...>(out, std::forward<T<Args> const &>(args)...)} -> std::same_as<std::ostream &>;
@@ -304,9 +544,7 @@ public:
 			}
 			return newC;
 		}
-		
-		template<typename... Args> requires std::constructible_from<Attributes, Args...> Node(Args... args) noexcept: Attributes(std::forward<Args>(args)...){}
-		
+	
 		template<template<typename> typename T, typename... Args> requires ATTRIBUTES_DISPLAYABLE<T, Args...> std::ostream &displaySubtree(std::ostream &out, T<Args> const &... args) const{
 			if (!isLeaf()) {
 				out << "(";
@@ -321,7 +559,10 @@ public:
 			return out;
 		}
 	
-	public:		
+		template<typename... Args> requires std::constructible_from<Attributes, Args...> Node(Args... args) noexcept : Attributes(std::forward<Args>(args)...) {}
+
+	public:
+
 		bool isLeaf() const noexcept{ return !lc; }
 		
 		bool isRoot() const noexcept{ return p->p == nullptr; }
@@ -334,7 +575,7 @@ public:
 		
 		void swapChildren() noexcept { lc.swap(rc); }
 		
-		template<typename... Args> requires requires(Args... args){ Node{std::forward<Args>(args)...}; } Node* emplaceAbove(Args... args) noexcept{
+		template<typename... Args> Node* emplaceAbove(Args... args) noexcept requires requires{ {Node{ std::forward<Args>(args)... } } noexcept; } {
 			unique_ptr<Node> newChild(new Node(std::forward<Args>(args)...));
 			return placeAbove(newChild);
 		}
@@ -389,6 +630,22 @@ public:
 		template<typename... Args> std::ostream &displaySubtree(std::ostream &out, StringVector<Args> const &... args) const{
 			return displaySubtree<StringVector, Args...>(out, std::forward<StringVector<Args> const &>(args)...);
 		}
+
+		template<typename Internal, typename Length, LOG_OR_OSTREAM Ostream> Ostream& displaySimpleNewickSubtree(Ostream &out, string const &internalAttr, string const &lengthAttr) const{
+			if (!isLeaf()) {
+				out << "(";
+				lc->displaySimpleNewickSubtree<Internal, Length>(out, internalAttr, lengthAttr);
+				out << ",";
+				rc->displaySimpleNewickSubtree<Internal, Length>(out, internalAttr, lengthAttr);
+				out << ")";
+				if (has<Internal>(internalAttr)) out << get<Internal>(internalAttr);
+			}
+			else {
+				if (has<size_t>(LEAF_ID)) out << taxonName2ID[get<size_t>(LEAF_ID)];
+			}
+			if (has<Length>(lengthAttr)) out << ":" << get<Length>(lengthAttr);
+			return out;
+		}
 		
 		size_t makeLeafHeavyByLeafCount() noexcept{
 			size_t leafcnt;
@@ -437,7 +694,7 @@ public:
 
 	Node* root() const noexcept{ return rootRef().get(); }
 	
-	template<typename... Args> requires requires(Args... args){ Node{std::forward<Args>(args)...}; } Node* emplaceRoot(Args... args) noexcept{
+	template<typename... Args> Node* emplaceRoot(Args... args) noexcept requires requires{ {Node{ std::forward<Args>(args)... } } noexcept; } {
 		if (empty()){
 			rootRef().reset(new Node(std::forward<Args>(args)...));
 			root()->p = dummy_root.get();
@@ -452,6 +709,12 @@ public:
 	
 	template<typename... Args> std::ostream &display(std::ostream &out, StringVector<Args> const &... args) const{
 		return display<StringVector, Args...>(out, std::forward<StringVector<Args> const &>(args)...);
+	}
+
+	template<typename Internal, typename Length, LOG_OR_OSTREAM Ostream> Ostream& displaySimpleNewick(Ostream& out, string const& internalAttr, string const& lengthAttr) const {
+		if (!empty()) root()->displaySimpleNewickSubtree<Internal, Length>(out, internalAttr, lengthAttr);
+		out << ";";
+		return out;
 	}
 	
 	void makeLeafHeavyByLeafCount() noexcept{ if (!empty()) root()->makeLeafHeavyByLeafCount(); }
@@ -470,8 +733,8 @@ public:
 	template<typename... Args> Random(Args... args) requires requires { {Generator{ std::forward<Args>(args)... }}; } : generator{ std::forward<Args>(args)... } {}
 
 	vector<size_t> randomTaxonOrder(size_t nTaxa) {
-		vector<size_t> indices(nTaxa);
-		std::iota(indices.begin(), indices.end(), 0);
+		vector<size_t> indices;
+		for (size_t iTaxa : std::views::iota((size_t) 0, nTaxa)) indices.push_back(iTaxa);
 		std::shuffle(indices.begin(), indices.end(), generator);
 		return indices;
 	}

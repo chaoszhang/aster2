@@ -1,8 +1,9 @@
 #ifndef CASTER_HPP
 #define CASTER_HPP
 
-#include "std_include.hpp"
+#include "common.hpp"
 #include "stepwise_colorable.hpp"
+#include "alignment_utilities.hpp"
 
 namespace caster{
 
@@ -18,6 +19,7 @@ template<class Attributes> concept STEPWISE_COLOR_ATTRIBUTES = requires
 	requires std::integral<typename Attributes::cnt2_t> || std::floating_point<typename Attributes::cnt2_t>;
 	requires std::integral<typename Attributes::cnt4_t> || std::floating_point<typename Attributes::cnt4_t>;
 	requires std::integral<typename Attributes::index_t>;
+	{ Attributes::ZERO } -> std::convertible_to<typename Attributes::score_t>;
 };
 
 struct StepwiseColorDefaultAttributes{
@@ -25,7 +27,7 @@ struct StepwiseColorDefaultAttributes{
 	using cnt_taxon_t = unsigned char;
 	using cnt_t = unsigned short;
 	using cnt2_t = unsigned int;
-	using cnt4_t = unsigned long long;
+	using cnt4_t = long long;
 	using index_t = long long;
 	static inline score_t constexpr ZERO = 0;
 };
@@ -41,23 +43,38 @@ public:
 	static inline score_t constexpr ZERO = Attributes::ZERO;
 	
 	struct SharedConstData{
+		using ParentClass = StepwiseColor<Attributes>;
+
+		struct Element{
+			index_t iGenomePosBegin = 0;
+			index_t nPos = 0;
+			vector<vector<array<cnt_taxon_t, 4> > > cnts; // cnts[iRow][iPos][iNucleotide] -> count
+			vector<index_t> taxon2row; // taxon2row[iTaxon] -> iRow in cnts
+			array<score_t, 4> eqFreqs{}; // eqFreqs[iNucleotide]
+
+			bool hasTaxon(size_t iTaxon) const noexcept{
+				return iTaxon < taxon2row.size() && taxon2row[iTaxon] != -1;
+			}
+		};
+
+		vector<Element> elements;
+
 		size_t nElements = 0;
-        index_t nGenomePos = 0;
-		vector<array<vector<cnt_taxon_t>, 4> > cnts; // cnts[iTaxon][iNucleotide][iGenomePos] -> count
-		vector<array<index_t, 2> > elementGenomePosRanges; // elementGenomePosRanges[iElement] -> (iGenomePosBegin, iGenomePosEnd)
-		vector<array<score_t, 4> > elementEqFreqs; // cnts[iElement][iNucleotide] -> eqFreq
+		index_t nGenomePos = 0;
     };
 
 private:
 	SharedConstData const* const sharedConstData;
     vector<array<array<cnt_t, 4>, 3> > colorCnts; // colorCnts[iGenomePos][iColor][iNucleotide] -> count
-	
+
 	template<bool isSet> inline void elementSetOrClearTaxonColor(size_t iElement, size_t iTaxon, size_t iColor) noexcept{
-		for (index_t iNucleotide : iota(0, 4)){
-			const array<index_t, 2> &elementRange = sharedConstData->elementGenomePosRanges[iElement];
-			for (index_t iGenomePos : iota(elementRange[0], elementRange[1])){
-				cnt_t& colorCnt = colorCnts[iGenomePos][iColor][iNucleotide];
-				cnt_t cnt = sharedConstData->cnts[iTaxon][iNucleotide][iGenomePos];
+		typename SharedConstData::Element const& element = sharedConstData->elements[iElement];
+		if (!element.hasTaxon(iTaxon)) return;
+		index_t iRow = element.taxon2row[iTaxon];
+		for (index_t iPos : iota(0, element.nPos)){
+			for (index_t iNucleotide : iota(0, 4)) {
+				cnt_t& colorCnt = colorCnts[element.iGenomePosBegin + iPos][iColor][iNucleotide];
+				cnt_t cnt = element.cnts[iRow][iPos][iNucleotide];
 				if constexpr (isSet) colorCnt += cnt;
 				else colorCnt -= cnt;
 			}
@@ -110,16 +127,143 @@ public:
 	}
 	
 	score_t elementScore(size_t iElement) const noexcept{
-		array<index_t, 2> const &elementRange = sharedConstData->elementGenomePosRanges[iElement];
+		index_t iGenomePosBegin = sharedConstData->elements[iElement].iGenomePosBegin;
+		index_t nPos = sharedConstData->elements[iElement].nPos;
+		typename SharedConstData::Element const& element = sharedConstData->elements[iElement];
+
 		score_t res = 0;
-		for (index_t iGenomePos : iota(elementRange[0], elementRange[1])){
-			res += scorePos(colorCnts[iGenomePos], sharedConstData->elementEqFreqs[iGenomePos]);
+		for (index_t iPos : iota(0, nPos)){
+			res += scorePos(colorCnts[iGenomePosBegin + iPos], element.eqFreqs);
 		}
 		return res;
 	}
 	
 	StepwiseColor(SharedConstData const* const data) noexcept: sharedConstData(data), colorCnts(data->nGenomePos){}
 };
+
+namespace DriverHelper {
+
+using namespace std;
+
+static array<int, 4> add(const array<int, 4>& a, const array<int, 4>& b) {
+    array<int, 4> result;
+    for (int j = 0; j < 4; j++) {
+        result[j] = a[j] + b[j];
+    }
+    return result;
+}
+
+static int sum(const array<int, 4>& cnt) {
+    int result = 0;
+    for (int j = 0; j < 4; j++) {
+        result += cnt[j];
+    }
+    return result;
+}
+
+template<typename DataClasses> DataClasses read() {
+	using DataClass0 = std::variant_alternative_t<0, DataClasses>;
+	DataClass0 sharedConstData;
+
+	const string& file = ARG.get<string>("input");
+	aligment_utilities::AlignmentParser AP(file, 1), AP2(file, 2);
+    while (AP.nextAlignment()) {
+        AP2.nextAlignment();
+        size_t nSites = AP.getLength();
+		size_t chunkMaxSize = ARG.get<size_t>("chunk");
+		size_t nChunk = (nSites + chunkMaxSize - 1) / chunkMaxSize;
+        vector<vector<size_t> > sites(nChunk);
+        vector<array<double, 4> > eqfreq;
+		size_t iElementBegin = sharedConstData.elements.size();
+		unordered_map<size_t, size_t> taxon2row;
+        {
+            vector<array<unsigned short, 4> > freq;
+            freq.resize(AP.getLength());
+            while (AP.nextSeq()) {
+                size_t iTaxon = common::taxonName2ID[AP.getName()];
+				if (!taxon2row.count(iTaxon)) taxon2row[iTaxon] = taxon2row.size();
+                string seq = AP.getSeq();
+                for (size_t i = 0; i < seq.size(); i++) {
+                    switch (seq[i]) {
+						case 'A': freq[i][0]++; break;
+						case 'C': freq[i][1]++; break;
+						case 'G': freq[i][2]++; break;
+						case 'T': freq[i][3]++; break;
+                    }
+                }
+            }
+            for (size_t i = 0; i < nChunk; i++) {
+				size_t s = i * nSites / nChunk, t = (i + 1) * nSites / nChunk;
+				size_t sumFreq[4] = {};
+                for (size_t j = s; j < t; j++) {
+                    for (int k = 0; k < 4; k++) {
+                        sumFreq[k] += freq[j][k];
+                    }
+#ifdef CUSTOMIZED_ANNOTATION_TERMINAL_LENGTH
+                    sites[i].push_back(j);
+#else
+                    if (freq[j][0] + freq[j][2] >= 2 && freq[j][1] + freq[j][3] >= 2) sites[i].push_back(j);
+#endif
+                }
+                double total = sumFreq[0] + sumFreq[1] + sumFreq[2] + sumFreq[3];
+                if (total > 0) eqfreq.push_back({ sumFreq[0] / total, sumFreq[1] / total, sumFreq[2] / total, sumFreq[3] / total });
+                else eqfreq.push_back({ 0.25, 0.25, 0.25, 0.25 });
+            }
+        }
+		for (size_t i = 0; i < nChunk; i++) {
+			typename DataClass0::Element element;
+			element.iGenomePosBegin = sharedConstData.nGenomePos;
+			element.nPos = sites[i].size();
+			element.cnts.resize(taxon2row.size(), vector<array<typename DataClass0::ParentClass::cnt_taxon_t, 4> >(element.nPos));
+			element.taxon2row.resize(common::taxonName2ID.nTaxa(), -1);
+			element.eqFreqs = eqfreq[i];
+			sharedConstData.elements.push_back(element);
+			sharedConstData.nElements++;
+			sharedConstData.nGenomePos += element.nPos;
+		}
+        while (AP2.nextSeq()) {
+			size_t iTaxon = common::taxonName2ID[AP2.getName()];
+			size_t iRow = taxon2row[iTaxon];
+            string seq = AP2.getSeq();
+			for (size_t iChunk : iota((size_t) 0, nChunk)) {
+				typename DataClass0::Element &element = sharedConstData.elements[iElementBegin + iChunk];
+				element.taxon2row[iTaxon] = iRow;
+				for (size_t iPos : iota((size_t) 0, sites[iChunk].size())) {
+					switch (seq[sites[iChunk][iPos]]) {
+						case 'A': element.cnts[iRow][iPos][0]++; break;
+						case 'C': element.cnts[iRow][iPos][1]++; break;
+						case 'G': element.cnts[iRow][iPos][2]++; break;
+						case 'T': element.cnts[iRow][iPos][3]++; break;
+					}
+				}
+            }
+        }
+    }
+	return sharedConstData;
+}
+
+};
+
+class Driver : public common::LogInfo{
+	using string = std::string;
+
+public:
+	using DataClasses = std::variant<StepwiseColor<StepwiseColorDefaultAttributes>::SharedConstData>;
+	
+	static std::pair<string, string> programNames() {
+		return { "caster-site", "Coalescence-aware Alignment-based Species Tree EstimatoR (Site)" };
+	}
+
+	static void addArguments() {
+		ARG.addArgument('\0', "chunk", "integer", "The maximum number of sites in each local aligment block for parameter estimation", 0, true, true, "10000");
+	}
+
+	static DataClasses getStepwiseColorSharedConstData(){
+		return DriverHelper::read<DataClasses>();
+	}
+};
+
+
 
 };
 #endif

@@ -17,10 +17,10 @@ template<class T> concept PLACEMENT_ALGORITHM = requires(T t, typename T::Color 
 	requires std::same_as<typename T::score_t, typename T::Color::score_t>;
 	requires std::same_as<typename T::score_t, typename T::ThreadPool::score_t>;
 	requires thread_pool::THREAD_POOL<typename T::ThreadPool>;
-	{ T{ color, threadPool, tree, verbose, index } };
+	{ T{ color, threadPool, tree, verbose } };
 	{ t.scoreTree() } noexcept -> std::same_as<typename T::score_t>;
-	{ t.optimalPlacement() } noexcept -> std::same_as<typename T::Tree::Node*>;
-	{ t.place() } noexcept;
+	{ t.optimalPlacement(index) } noexcept -> std::same_as<typename T::Tree::Node*>;
+	{ t.place(index) } noexcept;
 };
 
 template<class Attributes> concept STEPWISE_COLOR_PLACEMENT_ATTRIBUTES = requires{
@@ -56,8 +56,6 @@ private:
 	Color &stepwiseColor;
 	ThreadPool &threadPool;
 	Tree &tree;
-	size_t iNewTaxon;
-	vector<size_t> newTaxonVector;
 	thread_pool::Instruction<score_t> instr;
 	std::queue<score_t> results;
 	std::unordered_map<Tree::Node*, size_t> leafId;
@@ -83,7 +81,7 @@ private:
 	template<bool isSetter> void clearSetColor(SetterOnlyVector<isSetter> const &leaves, size_t iColor, size_t jColor) noexcept{
 		if constexpr (isSetter){
 			Color &localStepwiseColor = stepwiseColor;
-			instr.mapFuncs.emplace_back([leaves, iColor, jColor, &localStepwiseColor](size_t iElement) noexcept{
+			instr.mapFuncs.emplace_back([leaves, iColor, jColor, &localStepwiseColor](size_t iElement) noexcept {
 				for (size_t iTaxon: leaves) {
 					localStepwiseColor.elementClearTaxonColor(iElement, iTaxon, iColor);
 					localStepwiseColor.elementSetTaxonColor(iElement, iTaxon, jColor);
@@ -108,17 +106,17 @@ private:
 		}
 	}
 	
-	template<bool isSetter, bool isPlacement> SetterOnlyVector<isSetter> colorSubtree(Tree::Node* node) noexcept{
+	template<bool isSetter, bool isPlacement> SetterOnlyVector<isSetter> colorSubtree(Tree::Node* node, SetterOnlyVector<isSetter> const& newTaxon) noexcept{
 		SetterOnlyVector<isSetter> leaves;
-		SetterOnlyVector<isSetter> const &newTaxon = [&]() -> SetterOnlyVector<isSetter> const& { if constexpr(isSetter) return newTaxonVector; else return leaves; }();
 		score_t score;
 		if (node->isLeaf()){
 			if constexpr(isSetter) leaves.push_back(leafId.at(node));
+			clearSetColor<isSetter>(leaves, 0, 2);
 		}
 		else {
-			SetterOnlyVector<isSetter> rcLeaves = colorSubtree<isSetter, isPlacement>(node->rightChild());
+			SetterOnlyVector<isSetter> rcLeaves = colorSubtree<isSetter, isPlacement>(node->rightChild(), newTaxon);
 			clearSetColor<isSetter>(rcLeaves, 2, 0);
-			leaves = colorSubtree<isSetter, isPlacement>(node->leftChild());
+			leaves = colorSubtree<isSetter, isPlacement>(node->leftChild(), newTaxon);
 			if constexpr(isSetter) for (size_t iTaxon : rcLeaves) leaves.push_back(iTaxon); 
 			clearSetColor<isSetter>(rcLeaves, 0, 1);
 			if constexpr(isPlacement) {
@@ -136,25 +134,29 @@ private:
 				score = computeScore<isSetter>();
 				if constexpr(!isSetter) node->set(NO_PLACE, score);
 			}
-			clearSetColor<isSetter>(rcLeaves, 1, 0);
+			clearSetColor<isSetter>(rcLeaves, 1, 2);
 		}
 		if constexpr(isPlacement) {
-			clearSetColor<isSetter>(newTaxon, 0, 2);
+			clearSetColor<isSetter>(newTaxon, 0, 1);
 			score = computeScore<isSetter>();
 			if constexpr(!isSetter) node->set(NEW_NODE, score);
-			clearSetColor<isSetter>(newTaxon, 2, 0);
+			clearSetColor<isSetter>(newTaxon, 1, 0);
 		}
+
 		return leaves;
 	}
 	
-	template<bool isPlacement> void labelTree() noexcept{
-		vector<size_t> leaves;
-		if constexpr(isPlacement) leaves.push_back(iNewTaxon);
+	template<bool isPlacement> void labelTree(size_t iNewTaxon = -1) noexcept{
+		vector<size_t> leaves, newTaxon;
+		if constexpr (isPlacement) newTaxon.push_back(iNewTaxon);
 		for (auto const &e : leafId) leaves.push_back(e.second);
 		setColor<true>(leaves, 0);
-		colorSubtree<true, isPlacement>(tree.root());
-		clearColor<true>(leaves, 0);
-		colorSubtree<false, isPlacement>(tree.root());
+		setColor<true>(newTaxon, 0);
+		colorSubtree<true, isPlacement>(tree.root(), newTaxon);
+		clearColor<true>(leaves, 2);
+		clearColor<true>(newTaxon, 0);
+		for (score_t result: threadPool(instr)) results.push(result);
+		colorSubtree<false, isPlacement>(tree.root(), true);
 	}
 	
 	score_t scoreSubtree(Tree::Node* node) noexcept{
@@ -163,14 +165,14 @@ private:
 	}
 
 	std::tuple<score_t, score_t, Tree::Node*> optimalPlacementSubtree(Tree::Node* node) noexcept{
-		score_t placeAboveScore = node->get<score_t>(PLACE_ABOVE);
-		if (node->isLeaf()) return std::make_tuple(ZERO, placeAboveScore, node);
+		score_t newNodeScore = node->get<score_t>(NEW_NODE);
+		if (node->isLeaf()) return std::make_tuple(ZERO, newNodeScore, node);
 
 		std::tuple<score_t, score_t, Tree::Node*> left = optimalPlacementSubtree(node->leftChild());
 		std::tuple<score_t, score_t, Tree::Node*> right = optimalPlacementSubtree(node->rightChild());
 		score_t placeLeftScore = node->get<score_t>(PLACE_LEFT);
 		score_t placeRightScore = node->get<score_t>(PLACE_RIGHT);
-		score_t newNodeScore = node->get<score_t>(NEW_NODE);
+		score_t placeAboveScore = node->get<score_t>(PLACE_ABOVE);
 
 		score_t dpOver = std::get<0>(left) + std::get<0>(right) + placeAboveScore;
 		score_t dpAbove = dpOver + newNodeScore;
@@ -181,22 +183,23 @@ private:
 	}
 
 public:
-	StepwiseColorPlacement(Color& stepwiseColor, ThreadPool& threadPool, Tree& tree, int verbose = common::LogInfo::DEFAULT_VERBOSE, size_t iNewTaxon = -1) : stepwiseColor(stepwiseColor), threadPool(threadPool), tree(tree), LogInfo(verbose), iNewTaxon(iNewTaxon) {
+	StepwiseColorPlacement(Color& stepwiseColor, ThreadPool& threadPool, Tree& tree, int verbose = common::LogInfo::DEFAULT_VERBOSE) : stepwiseColor(stepwiseColor), threadPool(threadPool), tree(tree), LogInfo(verbose) {
 		tree.makeLeafHeavyByLeafCount();
-		newTaxonVector.push_back(iNewTaxon);
 		for (Tree::Node* node : tree.leaves()) leafId[node] = std::any_cast<size_t>(node->get(LEAF_ID));
 	}
 
 	score_t scoreTree() noexcept {
+		labelTree<false>();
 		return scoreSubtree(tree.root());
 	}
 
-	Tree::Node* optimalPlacement() noexcept {
+	Tree::Node* optimalPlacement(size_t iNewTaxon) noexcept {
+		labelTree<true>(iNewTaxon);
 		return std::get<2>(optimalPlacementSubtree(tree.root()));
 	}
 
-	void place() noexcept {
-		optimalPlacement()->emplaceAbove(LEAF_ID, iNewTaxon);
+	void place(size_t iNewTaxon) noexcept {
+		optimalPlacement(iNewTaxon)->emplaceAbove(LEAF_ID, iNewTaxon);
 	}
 };
 

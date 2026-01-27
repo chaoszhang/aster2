@@ -126,7 +126,6 @@ public:
 		block->next.reset(new Block);
 		block->dataReady = true;
 		if (block->scheduler.get() != nullptr) (*block->scheduler)(0);
-		std::unique_lock<std::mutex> lk(block->headMtx);
 		while (block->readyCnt < nThreads - 1);
 		vector<vector<score_t> > results = block->scheduler->getResults();
 		vector<score_t> res;

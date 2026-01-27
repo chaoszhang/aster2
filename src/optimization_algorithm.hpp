@@ -15,10 +15,14 @@ namespace optimization_algorithm {
 
 		common::AnnotatedBinaryTree& operator()(typename PlacementAlgorithm::Color& color, typename PlacementAlgorithm::ThreadPool& threadPool, common::AnnotatedBinaryTree& tree, std::ranges::range auto const& taxa) {
 			size_t nLeaves = tree.leaves().size();
-			for (auto const& iTaxon : taxa) {
-				if (nLeaves < 3) tree.emplaceRoot();
+			LogInfo const& vlog = log.vlog<1>();
+			for (size_t iTaxon : taxa) {
+				if (nLeaves < 3) tree.emplaceRoot(common::AnnotatedBinaryTree::LEAF_ID, iTaxon);
 				else {
-					PlacementAlgorithm placement(color, threadPool, tree, verbose + 1, iTaxon);
+					log << "Placing " << nLeaves + 1 << "-th taxon (" << common::taxonName2ID[iTaxon] << ")..." << std::endl;
+					tree.displaySimpleNewick<double, double>(vlog << "Current tree: ", "", "") << std::endl;
+					PlacementAlgorithm placement(color, threadPool, tree, verbose + 1);
+					placement.place(iTaxon);
 				}
 				nLeaves++;
 			}
@@ -36,9 +40,11 @@ namespace optimization_algorithm {
 			StepwiseColor stepwiseColor(&data);
 			thread_pool::ThreadPool<typename StepwiseColor::score_t, thread_pool::SimpleScheduler> tp(nThreads, 0, data.nElements);
 			common::AnnotatedBinaryTree tree;
-			placement_algorithm::StepwiseColorPlacement<placement_algorithm::StepwiseColorPlacementDefaultAttributes<StepwiseColor> > placement(stepwiseColor, tp, tree, verbose);
-			optimization_algorithm::RecursivePlacement<decltype(placement)> rp;
+			optimization_algorithm::RecursivePlacement<placement_algorithm::StepwiseColorPlacement<placement_algorithm::StepwiseColorPlacementDefaultAttributes<StepwiseColor> > > rp(verbose);
 			rp(stepwiseColor, tp, tree, taxa);
+			tree.displaySimpleNewick<double, double>(log << "Final tree: ", "", "") << std::endl;
+			placement_algorithm::StepwiseColorPlacement<placement_algorithm::StepwiseColorPlacementDefaultAttributes<StepwiseColor> > placement(stepwiseColor, tp, tree, verbose);
+			log << "Final score: " << placement.scoreTree() << std::endl;
 			return tree;
 		}
 	};
