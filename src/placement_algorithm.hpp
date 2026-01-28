@@ -24,23 +24,22 @@ template<class T> concept PLACEMENT_ALGORITHM = requires(T t, typename T::Color 
 };
 
 template<class Attributes> concept STEPWISE_COLOR_PLACEMENT_ATTRIBUTES = requires{
-	requires stepwise_colorable::STEPWISE_COLORABLE<typename Attributes::StepwiseColor>;
-	requires thread_pool::SCHEDULER<Attributes::template Scheduler, typename Attributes::StepwiseColor::score_t>;
+	requires stepwise_colorable::STEPWISE_COLORABLE<typename Attributes::Color>;
+	requires thread_pool::SCHEDULER<Attributes::template Scheduler, typename Attributes::Color::score_t>;
 };
 
 template<stepwise_colorable::STEPWISE_COLORABLE SC> struct StepwiseColorPlacementDefaultAttributes{
-	using StepwiseColor = SC;
+	using Color = SC;
 	template<typename T> using Scheduler = thread_pool::SimpleScheduler<T>;
 };
 
 template<STEPWISE_COLOR_PLACEMENT_ATTRIBUTES Attributes> class StepwiseColorPlacement : public common::LogInfo {
 public:
-	using Color = Attributes::StepwiseColor;
+	using Color = Attributes::Color;
 	using score_t = Color::score_t;
 	using ThreadPool = thread_pool::ThreadPool<score_t, Attributes::template Scheduler>;
 	using Tree = common::AnnotatedBinaryTree;
-	static inline string const NO_PLACE = "NO_PLACE";
-	static inline string const SCORE_NO = "SCORE_NO";
+	static inline string const NO_PLACE = Tree::TRIPARTITION_SCORE;
 	static inline string const PLACE_ABOVE = "PLACE_ABOVE";
 	static inline string const PLACE_LEFT = "PLACE_LEFT";
 	static inline string const PLACE_RIGHT = "PLACE_RIGHT";

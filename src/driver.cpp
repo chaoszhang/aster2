@@ -1,7 +1,12 @@
 #include "optimization_algorithm.hpp"
 
+#ifdef CASTER
 #include "caster.hpp"
 namespace my_tool = caster;
+#else
+#include "caster.hpp"
+namespace my_tool = caster;
+#endif
 
 using std::cerr;
 using std::endl;
@@ -39,17 +44,19 @@ int main(int argc, char* argv[]) {
 	size_t nTaxa = common::taxonName2ID.nTaxa();
 	ARG << "#taxa: " << nTaxa << endl;
 
-	common::Random<std::mt19937_64> random;
-	optimization_algorithm::SimpleStepwiseColor<typename decltype(stepwiseColorSharedConstData)::ParentClass> simpleStepwiseColor(0);
-	common::AnnotatedBinaryTree tree = simpleStepwiseColor(stepwiseColorSharedConstData, nTaxa, random, nThreads);
+	optimization_algorithm::Procedure<optimization_algorithm::DefaultProcedureAttributes<typename decltype(stepwiseColorSharedConstData)::ParentClass> > alg;
+	std::shared_ptr<common::AnnotatedBinaryTree> tree = alg.constrainedDPProcedure(stepwiseColorSharedConstData, nTaxa, 4, nThreads, 0);
+	
+	tree->displaySimpleNewick<double, double>(ARG << "Final tree: ", "", "") << endl;
+
 
 	if (ARG.has("output")) {
 		std::ofstream fout(ARG.get<string>("output"));
-		tree.displaySimpleNewick<double, double>(fout, "support", "length");
+		tree->displaySimpleNewick<double, double>(fout, "support", "length");
 		fout << endl;
 	}
 	else {
-		tree.displaySimpleNewick<double, double>(std::cout, "support", "length");
+		tree->displaySimpleNewick<double, double>(std::cout, "support", "length");
 		std::cout << endl;
 	}
 	return 0;

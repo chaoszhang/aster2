@@ -400,6 +400,10 @@ public:
 	}
 
 	void parse(int argc, char* argv[]) {
+		if (argc == 1) {
+			displayHelp(std::cout);
+			exit(0);
+		}
 		argv0 = argv[0];
 		vector<string> args;
 		for (int i = 1; i < argc; ++i) args.push_back(string(argv[i]));
@@ -517,6 +521,7 @@ class AnnotatedBinaryTree : public Attributes{
 public:
 	static inline string const NUM_LEAVES = "NUM_LEAVES";
 	static inline string const LEAF_ID = "LEAF_ID";
+	static inline string const TRIPARTITION_SCORE = "TRIPARTITION_SCORE";
 
 	class Node : public Attributes{
 		unique_ptr<Node> lc, rc;
@@ -702,6 +707,15 @@ public:
 		else root()->emplaceAbove(std::forward<Args>(args)...);
 		return root();
 	}
+
+	Node* regraftRoot(AnnotatedBinaryTree &tree) noexcept{
+		if (empty()){
+			rootRef().swap(tree.rootRef());
+			root()->p = dummy_root.get();
+		}
+		else root()->regraftAbove(tree);
+		return root();
+	}
 	
 	template<typename... Args> std::ostream &display(std::ostream &out, String<Args> const &... args) const{
 		return display<String, Args...>(out, std::forward<String<Args> const &>(args)...);
@@ -726,10 +740,12 @@ public:
 	}
 };
 
-template<class Generator> class Random {
+template<class G> class Random {
+public:
+	using Generator = G;
+
 	Generator generator;
 
-public:
 	template<typename... Args> Random(Args... args) requires requires { {Generator{ std::forward<Args>(args)... }}; } : generator{ std::forward<Args>(args)... } {}
 
 	vector<size_t> randomTaxonOrder(size_t nTaxa) {

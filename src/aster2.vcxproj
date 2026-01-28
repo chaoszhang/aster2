@@ -131,6 +131,7 @@
       <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">stdcpplatest</LanguageStandard>
       <LanguageStandard_C Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">stdclatest</LanguageStandard_C>
     </ClCompile>
+    <ClCompile Include="constrained_dp_algorithm.hpp" />
     <ClCompile Include="driver.cpp" />
   </ItemGroup>
   <ItemGroup>

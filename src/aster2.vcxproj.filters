@@ -21,6 +21,9 @@
     <ClCompile Include="caster.hpp">
       <Filter>头文件</Filter>
     </ClCompile>
+    <ClCompile Include="constrained_dp_algorithm.hpp">
+      <Filter>头文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="common.hpp">

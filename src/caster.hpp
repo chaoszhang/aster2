@@ -32,7 +32,7 @@ struct StepwiseColorDefaultAttributes{
 	static inline score_t constexpr ZERO = 0;
 };
 
-template<STEPWISE_COLOR_ATTRIBUTES Attributes> class StepwiseColor{
+template<STEPWISE_COLOR_ATTRIBUTES Attributes> class Color{
 public:
 	using score_t = Attributes::score_t;
 	using cnt_taxon_t = Attributes::cnt_taxon_t;
@@ -43,7 +43,7 @@ public:
 	static inline score_t constexpr ZERO = Attributes::ZERO;
 	
 	struct SharedConstData{
-		using ParentClass = StepwiseColor<Attributes>;
+		using ParentClass = Color<Attributes>;
 
 		struct Element{
 			index_t iGenomePosBegin = 0;
@@ -138,7 +138,7 @@ public:
 		return res;
 	}
 	
-	StepwiseColor(SharedConstData const* const data) noexcept: sharedConstData(data), colorCnts(data->nGenomePos){}
+	Color(SharedConstData const* const data) noexcept: sharedConstData(data), colorCnts(data->nGenomePos){}
 };
 
 namespace DriverHelper {
@@ -248,7 +248,7 @@ class Driver : public common::LogInfo{
 	using string = std::string;
 
 public:
-	using DataClasses = std::variant<StepwiseColor<StepwiseColorDefaultAttributes>::SharedConstData>;
+	using DataClasses = std::variant<Color<StepwiseColorDefaultAttributes>::SharedConstData>;
 	
 	static std::pair<string, string> programNames() {
 		return { "caster-site", "Coalescence-aware Alignment-based Species Tree EstimatoR (Site)" };
