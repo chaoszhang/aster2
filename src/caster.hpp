@@ -20,6 +20,7 @@ template<class Attributes> concept STEPWISE_COLOR_ATTRIBUTES = requires
 	requires std::integral<typename Attributes::cnt4_t> || std::floating_point<typename Attributes::cnt4_t>;
 	requires std::integral<typename Attributes::index_t>;
 	{ Attributes::ZERO } -> std::convertible_to<typename Attributes::score_t>;
+	{ Attributes::EPSILON } -> std::convertible_to<typename Attributes::score_t>;
 };
 
 struct StepwiseColorDefaultAttributes{
@@ -30,6 +31,7 @@ struct StepwiseColorDefaultAttributes{
 	using cnt4_t = long long;
 	using index_t = long long;
 	static inline score_t constexpr ZERO = 0;
+	static inline score_t constexpr EPSILON = 1e-3;
 };
 
 template<STEPWISE_COLOR_ATTRIBUTES Attributes> class Color{
@@ -41,6 +43,7 @@ public:
 	using cnt4_t = Attributes::cnt4_t;
 	using index_t = Attributes::index_t;
 	static inline score_t constexpr ZERO = Attributes::ZERO;
+	static inline score_t constexpr EPSILON = Attributes::EPSILON;
 	
 	struct SharedConstData{
 		using ParentClass = Color<Attributes>;
@@ -244,7 +247,8 @@ template<typename DataClasses> DataClasses read() {
 
 };
 
-class Driver : public common::LogInfo{
+class Driver : public common::LogInfo
+{
 	using string = std::string;
 
 public:

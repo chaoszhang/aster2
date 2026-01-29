@@ -1,0 +1,7 @@
+src/.vs
+src/x64
+src/aster2
+src/log.txt
+src/makefile
+src/test
+bin

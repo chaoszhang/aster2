@@ -73,10 +73,9 @@ template<typename score_t, typename Random> class ConstrainedDP : public common:
 	struct Node {
 		NodeHash hash, bestChild;
 		vector<std::pair<NodeHash, score_t> > children; // pair of (child hash, score)
-		bool dpDone = false, isLeaf = false;
-		size_t iTaxon;
+		bool isLeaf = false;
+		size_t iTaxon, dpRound = 0;
 		score_t bestScore;
-		size_t nodeNum = -1;
 		
 		Node() noexcept {};
 		Node(NodeHash const& hash) noexcept : hash(hash) {}
@@ -85,7 +84,7 @@ template<typename score_t, typename Random> class ConstrainedDP : public common:
 	unordered_map<NodeHash, Node, typename NodeHash::HashFunction> hash2node;
 	vector<NodeHash> leafHashes;
 	NodeHash totalHash;
-	size_t nodeNum = 0;
+	size_t dpRound = 0;
 
 	using Tree = common::AnnotatedBinaryTree;
 
@@ -93,7 +92,6 @@ template<typename score_t, typename Random> class ConstrainedDP : public common:
 	void addNode(const NodeHash& hash) noexcept {
 		if (!hash2node.contains(hash)) {
 			hash2node[hash] = Node(hash);
-			hash2node[hash].nodeNum = nodeNum++;
 		}
 	}
 
@@ -117,8 +115,8 @@ template<typename score_t, typename Random> class ConstrainedDP : public common:
 
 	score_t computeDP(NodeHash const& hash, score_t const& ZERO) noexcept {
 		Node& node = hash2node.at(hash);
-		if (node.dpDone) return node.bestScore;
-		node.dpDone = true;
+		if (node.dpRound == dpRound) return node.bestScore;
+		node.dpRound = dpRound;
 		if (node.isLeaf) return node.bestScore = ZERO;
 		//if (node.children.empty()) throw std::logic_error("No children for non-leaf node in DP computation.");
 		bool first = true;
@@ -177,6 +175,7 @@ public:
 		for (NodeHash const& h : leafHashes) {
 			hash2node[totalHash].children.emplace_back(h, ZERO);
 		}
+		dpRound++;
 		computeDP(totalHash, ZERO);
 		Tree tree = reconstructSubtree(totalHash - leafHashes[outgroup]);
 		tree.emplaceRoot(Tree::LEAF_ID, outgroup);

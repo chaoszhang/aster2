@@ -124,10 +124,6 @@ public:
 
 	LogInfo(int verbose = DEFAULT_VERBOSE) : verbose(verbose) {}
 
-	template<int verbose_delta> LogInfo vlog() const {
-		return LogInfo(verbose + verbose_delta);
-	}
-
 	LogInfo const& operator<<(auto const& t) const requires requires { {std::cerr << t}; } {
 		if (verbose <= shared.errVerbose) std::cerr << t;
 		if (shared.fout && verbose <= shared.logVerbose) (*shared.fout) << t;
@@ -148,7 +144,7 @@ public:
 };
 LogInfo::Shared LogInfo::shared;
 
-template<typename T> concept LOG_OR_OSTREAM = std::same_as<T, const LogInfo> || std::derived_from<T, std::ostream>;
+template<typename T> concept LOG_OR_OSTREAM = std::convertible_to<T, const LogInfo> || std::derived_from<T, std::ostream>;
 
 class Attributes: public LogInfo{
 public:
@@ -522,6 +518,7 @@ public:
 	static inline string const NUM_LEAVES = "NUM_LEAVES";
 	static inline string const LEAF_ID = "LEAF_ID";
 	static inline string const TRIPARTITION_SCORE = "TRIPARTITION_SCORE";
+	static inline string const SCORE = "SCORE";
 
 	class Node : public Attributes{
 		unique_ptr<Node> lc, rc;
@@ -636,7 +633,7 @@ public:
 			return displaySubtree<StringVector, Args...>(out, std::forward<StringVector<Args> const &>(args)...);
 		}
 
-		template<typename Internal, typename Length, LOG_OR_OSTREAM Ostream> Ostream& displaySimpleNewickSubtree(Ostream &out, string const &internalAttr, string const &lengthAttr) const{
+		template<typename Internal, typename Length, LOG_OR_OSTREAM Ostream> Ostream& displaySimpleNewickSubtree(Ostream& out, string const& internalAttr, string const& lengthAttr) const {
 			if (!isLeaf()) {
 				out << "(";
 				lc->displaySimpleNewickSubtree<Internal, Length>(out, internalAttr, lengthAttr);
@@ -649,6 +646,20 @@ public:
 				if (has<size_t>(LEAF_ID)) out << taxonName2ID[get<size_t>(LEAF_ID)];
 			}
 			if (has<Length>(lengthAttr)) out << ":" << get<Length>(lengthAttr);
+			return out;
+		}
+
+		template<LOG_OR_OSTREAM Ostream> Ostream& displaySimpleNewickSubtree(Ostream& out) const {
+			if (!isLeaf()) {
+				out << "(";
+				lc->displaySimpleNewickSubtree(out);
+				out << ",";
+				rc->displaySimpleNewickSubtree(out);
+				out << ")";
+			}
+			else {
+				if (has<size_t>(LEAF_ID)) out << taxonName2ID[get<size_t>(LEAF_ID)];
+			}
 			return out;
 		}
 		
@@ -727,6 +738,12 @@ public:
 
 	template<typename Internal, typename Length, LOG_OR_OSTREAM Ostream> Ostream& displaySimpleNewick(Ostream& out, string const& internalAttr, string const& lengthAttr) const {
 		if (!empty()) root()->displaySimpleNewickSubtree<Internal, Length>(out, internalAttr, lengthAttr);
+		out << ";";
+		return out;
+	}
+
+	template<LOG_OR_OSTREAM Ostream> Ostream& displaySimpleNewick(Ostream& out) const {
+		if (!empty()) root()->displaySimpleNewickSubtree(out);
 		out << ";";
 		return out;
 	}

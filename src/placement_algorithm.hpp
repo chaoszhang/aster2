@@ -189,7 +189,9 @@ public:
 
 	score_t scoreTree() noexcept {
 		labelTree<false>();
-		return scoreSubtree(tree.root());
+		score_t score = scoreSubtree(tree.root());
+		tree[Tree::SCORE] = score;
+		return score;
 	}
 
 	Tree::Node* optimalPlacement(size_t iNewTaxon) noexcept {

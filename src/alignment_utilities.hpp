@@ -63,7 +63,8 @@ public:
 		size_t len = bufferName.length();
         if (len > 0 && bufferName[len - 1] == '\r') {
             bufferName = bufferName.substr(0, len - 1);
-			vlog<-1>() << "Warning: Carriage return (\\r) detected in sequence name '" << bufferName << "'. Removed, but may case bugs elsewhere.\n";
+            LogInfo vlog(verbose + 1);
+			vlog << "Warning: Carriage return (\\r) detected in sequence name '" << bufferName << "'. Removed, but may case bugs elsewhere.\n";
         }
         return bufferName;
     }

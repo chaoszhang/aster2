@@ -25,6 +25,8 @@ int main(int argc, char* argv[]) {
 	ARG.addArgument('o', "output", "string", "Output file path, print to stdout if not provided", 5, true);
 	ARG.addArgument('t', "thread", "integer", "Number of threads", 4, true, true, "1");
 	ARG.addArgument('a', "mapping", "string", "Mapping file path, a list of gene/speicesman name to taxon name maps, each line contains one gene/speicesman name followed by one taxon name separated by a space or tab", 3, true, false);
+	ARG.addArgument('r', "initial-round", "integer", "Number of initial rounds of placement", 2, true, true, "4");
+	ARG.addArgument('s', "subsequent-round", "integer", "Number of subsequent rounds of placement", 2, true, true, "4");
 	ARG.addArgument('\0', "verbose", "integer", "Verbose level", 0, true, true, "2");
 	ARG.addArgument('\0', "no-log", "flag", "Don't generate log file", 1, true);
 	ARG.addArgument('\0', "log", "string", "Log file path", 0, true, true, "log.txt");
@@ -36,18 +38,25 @@ int main(int argc, char* argv[]) {
 	ARG.print();
 
 	size_t nThreads = ARG.get<size_t>("thread");
-	ARG << "#threads: " << nThreads << endl;
+	size_t nRounds = ARG.get<size_t>("initial-round");
+	size_t nSubsequent = ARG.get<size_t>("subsequent-round");
 
 	auto stepwiseColorSharedConstData = std::visit([](auto&& arg) -> decltype(auto) {
 		return std::forward<decltype(arg)>(arg);
 	}, my_tool::Driver::getStepwiseColorSharedConstData());
 	size_t nTaxa = common::taxonName2ID.nTaxa();
-	ARG << "#taxa: " << nTaxa << endl;
-
-	optimization_algorithm::Procedure<optimization_algorithm::DefaultProcedureAttributes<typename decltype(stepwiseColorSharedConstData)::ParentClass> > alg;
-	std::shared_ptr<common::AnnotatedBinaryTree> tree = alg.constrainedDPProcedure(stepwiseColorSharedConstData, nTaxa, 4, nThreads, 0);
 	
-	tree->displaySimpleNewick<double, double>(ARG << "Final tree: ", "", "") << endl;
+	ARG << "#Taxa: " << nTaxa << endl;
+	ARG << "#Elements: " << stepwiseColorSharedConstData.nElements << endl;
+	ARG << "#Threads: " << nThreads << endl;
+	ARG << "#Initial-round: " << nRounds << endl;
+	ARG << "#Subsequent-round: " << nSubsequent << endl;
+
+	using Alg = optimization_algorithm::Procedure<optimization_algorithm::DefaultProcedureAttributes<typename decltype(stepwiseColorSharedConstData)::ParentClass> >;
+	Alg alg;
+	std::shared_ptr<common::AnnotatedBinaryTree> tree = alg.heuristSearch(stepwiseColorSharedConstData, nTaxa, nRounds, nSubsequent, nThreads, 0, alg.constrainedDPProcedure);
+
+	tree->displaySimpleNewick(ARG << "Final tree: ") << endl;
 
 
 	if (ARG.has("output")) {
