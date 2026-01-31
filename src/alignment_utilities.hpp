@@ -73,7 +73,7 @@ public:
 		size_t len = bufferSeq.length();
         if (len > 0 && bufferSeq[len - 1] == '\r') {
             bufferSeq = bufferSeq.substr(0, len - 1);
-			log << "Warning: Carriage return (\\r) detected in sequence of '" << bufferName << "'. Removed, but may case bugs elsewhere.\n";
+			log() << "Warning: Carriage return (\\r) detected in sequence of '" << bufferName << "'. Removed, but may case bugs elsewhere.\n";
         }
         if (bufferSeq.length() != length) {
             cerr << "Error: Sequence length of " << bufferName << " is not consistent!\n";
@@ -175,7 +175,7 @@ private:
         if (fastaQueue.empty()) return false;
         string fileName = fastaQueue.front();
         fastaQueue.pop();
-        log << "Processing " << fileName << " ... \n";
+        log() << "Processing " << fileName << " ... \n";
         fin.close();
         fin.open(fileName);
         if (!parseSeqFasta()) {
@@ -198,7 +198,7 @@ private:
     bool nextAlignmentPhylip() {
         if (!(fin >> phylipNspecies)) return false;
         fin >> length;
-        log << "Reading alignment of " << phylipNspecies << " species of length " << length << " ...\n";
+        log() << "Reading alignment of " << phylipNspecies << " species of length " << length << " ...\n";
         return true;
     }
 

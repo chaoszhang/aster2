@@ -37,6 +37,8 @@ int main(int argc, char* argv[]) {
 	common::LogInfo::setVerbose(ARG.has("no-log") ? nullptr : new std::ofstream(ARG.get<string>("log")), ARG.get<size_t>("log-verbose"), ARG.get<size_t>("verbose"));
 	ARG.print();
 
+	ARG.log() << "Parsing input file(s)..." << endl;
+
 	size_t nThreads = ARG.get<size_t>("thread");
 	size_t nRounds = ARG.get<size_t>("initial-round");
 	size_t nSubsequent = ARG.get<size_t>("subsequent-round");
@@ -46,26 +48,27 @@ int main(int argc, char* argv[]) {
 	}, my_tool::Driver::getStepwiseColorSharedConstData());
 	size_t nTaxa = common::taxonName2ID.nTaxa();
 	
-	ARG << "#Taxa: " << nTaxa << endl;
-	ARG << "#Elements: " << stepwiseColorSharedConstData.nElements << endl;
-	ARG << "#Threads: " << nThreads << endl;
-	ARG << "#Initial-round: " << nRounds << endl;
-	ARG << "#Subsequent-round: " << nSubsequent << endl;
+	ARG.log() << "#Taxa: " << nTaxa << endl;
+	ARG.log() << "#Elements: " << stepwiseColorSharedConstData.nElements << endl;
+	ARG.log() << "#Threads: " << nThreads << endl;
+	ARG.log() << "#Initial-rounds: " << nRounds << endl;
+	ARG.log() << "#Subsequent-rounds: " << nSubsequent << endl;
 
 	using Alg = optimization_algorithm::Procedure<optimization_algorithm::DefaultProcedureAttributes<typename decltype(stepwiseColorSharedConstData)::ParentClass> >;
-	Alg alg;
-	std::shared_ptr<common::AnnotatedBinaryTree> tree = alg.heuristSearch(stepwiseColorSharedConstData, nTaxa, nRounds, nSubsequent, nThreads, 0, alg.constrainedDPProcedure);
 
-	tree->displaySimpleNewick(ARG << "Final tree: ") << endl;
+	ARG.log() << "Optimiziation algorithm starts..." << endl;
+	common::AnnotatedBinaryTree tree = Alg::heuristSearch(stepwiseColorSharedConstData, nTaxa, nRounds, nSubsequent, nThreads, 0, Alg::defaultProcedure);
+
+	tree.displaySimpleNewick(ARG.log() << "Final tree: ") << endl;
 
 
 	if (ARG.has("output")) {
 		std::ofstream fout(ARG.get<string>("output"));
-		tree->displaySimpleNewick<double, double>(fout, "support", "length");
+		tree.displaySimpleNewick<double, double>(fout, "support", "length");
 		fout << endl;
 	}
 	else {
-		tree->displaySimpleNewick<double, double>(std::cout, "support", "length");
+		tree.displaySimpleNewick<double, double>(std::cout, "support", "length");
 		std::cout << endl;
 	}
 	return 0;

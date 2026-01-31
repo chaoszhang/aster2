@@ -119,21 +119,25 @@ class LogInfo {
 public:
 	static inline int constexpr DEFAULT_VERBOSE = 99;
 
-	LogInfo const& log = *this;
 	int verbose;
 
-	LogInfo(int verbose = DEFAULT_VERBOSE) : verbose(verbose) {}
+	LogInfo(int verbose = DEFAULT_VERBOSE) noexcept : verbose(verbose) {}
 
 	LogInfo const& operator<<(auto const& t) const requires requires { {std::cerr << t}; } {
 		if (verbose <= shared.errVerbose) std::cerr << t;
 		if (shared.fout && verbose <= shared.logVerbose) (*shared.fout) << t;
-		return log;
+		return *this;
 	}
 
 	LogInfo const& operator<<(std::ostream&t(std::ostream&)) const {
 		if (verbose <= shared.errVerbose) std::cerr << t;
 		if (shared.fout && verbose <= shared.logVerbose) (*shared.fout) << t;
-		return log;
+		return *this;
+	}
+
+	LogInfo const& log() const noexcept {
+		for (int i : std::views::iota(0, verbose)) *this << " ";
+		return *this << "- ";
 	}
 
 	static void setVerbose(std::ostream* fout, int logVerbose, int errVerbose) {
@@ -310,7 +314,7 @@ class InputParser : public Attributes {
 		for (int i = 0; i < argc; ++i) {
 			if (needParseArg && i + 1 == argc && argv[i].size() > 0 && argv[i][0] != '-') {
 				set("input", argv[i]);
-				log << "Warning: " << argv[i] << " is interpreted as: -i " << argv[i] << std::endl;
+				log() << "Warning: " << argv[i] << " is interpreted as: -i " << argv[i] << std::endl;
 				break;
 			}
 			Argument const& argument = (needParseArg) ? parseArg(argv[i]) : nameToArgument.at(argv[i]);
@@ -445,21 +449,21 @@ public:
 	}
 
 	void print() {
-		log << get<string>("FULL_NAME") << " " << ChangeLog::getGlobalVersion() << std::endl;
-		log << argv0;
+		*this << get<string>("FULL_NAME") << " " << ChangeLog::getGlobalVersion() << std::endl;
+		*this << argv0;
 		for (Argument const& argument : arguments) {
 			if (has(argument.name)) {
-				log << " --" << argument.name;
-				if (argument.type == "integer") log << " " << get<size_t>(argument.name);
-				else if (argument.type == "numeric") log << " " << get<double>(argument.name);
-				else if (argument.type == "string") log << " " << get<string>(argument.name);
+				*this << " --" << argument.name;
+				if (argument.type == "integer") *this << " " << get<size_t>(argument.name);
+				else if (argument.type == "numeric") *this << " " << get<double>(argument.name);
+				else if (argument.type == "string") *this << " " << get<string>(argument.name);
 				else if (argument.type != "flag") {
 					std::cerr << "Error: Unknown argument type for argument " << argument.name << ". Please fill a bug report! Many thanks!" << std::endl;
 					throw std::invalid_argument("Unknown argument type");
 				}
 			}
 		}
-		log << std::endl;
+		*this << std::endl;
 	}
 };
 
@@ -688,7 +692,7 @@ public:
 	};
 	
 private:
-	unique_ptr<Node> dummy_root;
+	std::shared_ptr<Node> dummy_root;
 	
 	template<template<typename> typename T, typename... Args> requires ATTRIBUTES_DISPLAYABLE<T, Args...> std::ostream &display(std::ostream &out, T<Args> const &... args) const{
 		out << "[";

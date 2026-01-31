@@ -172,10 +172,14 @@ public:
 	}
 
 	Tree optimalUnrootedTree(score_t const& ZERO, size_t outgroup = 0) noexcept {
-		for (NodeHash const& h : leafHashes) {
-			hash2node[totalHash].children.emplace_back(h, ZERO);
+		if (dpRound == 0){
+			for (NodeHash const& h : leafHashes) {
+				hash2node[totalHash].children.emplace_back(h, ZERO);
+			}
 		}
 		dpRound++;
+		LogInfo vlog(verbose + 1);
+		vlog.log() << "Computing constrained dynamic programming tree (round " << dpRound << ")..." << std::endl;
 		computeDP(totalHash, ZERO);
 		Tree tree = reconstructSubtree(totalHash - leafHashes[outgroup]);
 		tree.emplaceRoot(Tree::LEAF_ID, outgroup);
