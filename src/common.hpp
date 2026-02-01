@@ -401,7 +401,7 @@ public:
 	}
 	
 	void displayHelp(std::ostream& out) const {
-		out << get<string>("FULL_NAME") << " " << ChangeLog::getGlobalVersion() << std::endl;
+		out << get<string>("FULL_NAME") << " " << ChangeLog::getGlobalVersion() << " (" << ChangeLog::getLatestUpdateDate() << ")" << std::endl;
 		out << "Available arguments:" << std::endl;
 		for (Argument const& argument : arguments) {
 			out << "  ";
