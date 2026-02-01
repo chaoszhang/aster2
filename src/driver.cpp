@@ -31,6 +31,7 @@ int main(int argc, char* argv[]) {
 	ARG.addArgument('\0', "no-log", "flag", "Don't generate log file", 1, true);
 	ARG.addArgument('\0', "log", "string", "Log file path", 0, true, true, "log.txt");
 	ARG.addArgument('\0', "log-verbose", "integer", "Verbose level in log file", 0, true, true, "3");
+	ARG.addArgument('\0', "subsample-min", "integer", "Minimum #Elements in each division when using subsample procedure", 0, true, true, "10000");
 	my_tool::Driver::addArguments();
 
 	ARG.parse(argc, argv);
@@ -57,7 +58,8 @@ int main(int argc, char* argv[]) {
 	using Alg = optimization_algorithm::Procedure<optimization_algorithm::DefaultProcedureAttributes<typename decltype(stepwiseColorSharedConstData)::ParentClass> >;
 
 	ARG.log() << "Optimiziation algorithm starts..." << endl;
-	common::AnnotatedBinaryTree tree = Alg::heuristSearch(stepwiseColorSharedConstData, nTaxa, nRounds, nSubsequent, nThreads, 0, Alg::defaultProcedure);
+	//common::AnnotatedBinaryTree tree = Alg::heuristSearch(stepwiseColorSharedConstData, nTaxa, nRounds, nSubsequent, nThreads, 0, Alg::defaultProcedure);
+	common::AnnotatedBinaryTree tree = Alg::heuristSearch2(stepwiseColorSharedConstData, nTaxa, nRounds, nSubsequent, nThreads, 0, Alg::defaultProcedure2);
 
 	tree.displaySimpleNewick(ARG.log() << "Final tree: ") << endl;
 

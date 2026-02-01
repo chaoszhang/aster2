@@ -29,194 +29,16 @@ public:
 		for (size_t iTaxon : taxa) {
 			if (nLeaves < 3) tree.emplaceRoot(common::AnnotatedBinaryTree::LEAF_ID, iTaxon);
 			else {
-				v1log.log() << "Placing " << nLeaves + 1 << "-th taxon (" << common::taxonName2ID[iTaxon] << ")" << endl;
 				tree.displaySimpleNewick(v2log.log() << "Current tree: ") << endl;
+				v1log.log() << "Placing " << nLeaves + 1 << "-th taxon (" << common::taxonName2ID[iTaxon] << ")" << endl;
 				PlacementAlgorithm placement(color, threadPool, tree, verbose + 1);
 				placement.place(iTaxon);
 			}
 			nLeaves++;
 		}
+		tree.displaySimpleNewick(v1log.log() << "Recursively placed tree: ") << endl;
 		return tree;
 	}
-};
-
-
-using R = std::any;
-
-class ProcedureBase {
-public:
-	class Subprocedure {
-	protected:
-		vector<shared_ptr<Subprocedure> > dep;
-		bool finished = false;
-	
-	public:
-		template<typename... Args> Subprocedure(Args... args): dep(args...) {}
-
-		virtual ~Subprocedure() = default;
-
-		virtual vector<shared_ptr<Subprocedure> > dependencies() { return dep; }
-		
-		virtual bool run() { return true; }
-
-		virtual R result() { return R(); }
-
-		bool recursivelyRun() {
-			if (finished) return true;
-			bool dependencyDone = true;
-			for (auto& s : dependencies()) dependencyDone &= s->recursivelyRun();
-			if (!dependencyDone) return false;
-			return finished = run();
-		}
-
-		void addDependency() {}
-
-		template<typename... Args> void addDependency(shared_ptr<Subprocedure> s, Args... args) { 
-			dep.push_back(s);
-			if constexpr (sizeof...(args) > 0) addDependency(args...);
-		}
-
-		template<typename T> static R prepResult(T&& result) {
-			return shared_ptr<T>(new T(result));
-		}
-
-		template<typename T, typename... Args> static R prepResult(Args... args) {
-			return shared_ptr<T>(new T(args...));
-		}
-		
-		R getResult() {
-			recursivelyRun();
-			// if (!finished) finished = recursivelyRun(); // May have new thread jobs!
-			// if (!finished) throw std::logic_error("Subprocedure: Dead lock!");
-			R res = result();
-			return res;
-		}
-	};
-	using S = shared_ptr<Subprocedure>;
-
-	template<typename T> class Input2 : public virtual Subprocedure {
-		R res;
-
-	public:
-		virtual bool run() override { return true; }
-
-		virtual R result() override { return res; }
-
-		Input2(T&& t) : res(shared_ptr<T>(new T(t))) {}
-
-		template<typename... Args> Input2(Args... args) : res(shared_ptr<T>(new T(std::forward<Args>(args)...))) {}
-	};
-
-	template<typename T, typename... Args> static shared_ptr<Input2<T> > sInput(Args... args) {
-		Input2<T> *p = new Input2<T>(std::forward<Args>(args)...);
-		shared_ptr<Input2<T> > s(p);
-		return s;
-	}
-
-	class Block : public virtual Subprocedure {
-	protected:
-		S start;
-		vector<S> units;
-
-		Block(Subprocedure *start): start(start) { addDependency(this->start); }
-
-		Block(S const& start) : start(start) { addDependency(this->start); }
-
-		void initialize(){}
-
-		template<typename... Args> void initialize(S unit, Args... args){
-			initialize(std::forward<Args>(args)...);
-			unit->addDependency(start);
-			units.push_back(unit);
-		}
-
-		template<typename... Args> void initialize(vector<S> _units, Args... args) {
-			initialize(std::forward<Args>(args)...);
-			for (S& unit: _units){
-				unit->addDependency(start);
-				units.push_back(unit);
-			}
-		}
-
-		template<typename... Args> Block(Subprocedure* start, Args... args) : Block(start) {
-			initialize(std::forward<Args>(args)...);
-		}
-
-		template<typename... Args> Block(S const& start, Args... args) : Block(start) {
-			initialize(std::forward<Args>(args)...);
-		}
-	public:
-		Block() : start(new Subprocedure) {}
-
-		template<typename... Args> Block(Args... args): Block() {
-			initialize(std::forward<Args>(args)...);
-		}
-
-		virtual vector<shared_ptr<Subprocedure> > dependencies() override {
-			vector<shared_ptr<Subprocedure> > res = dep;
-			
-			for (S& unit : units) res.push_back(unit);
-			/*
-			for (S& unit : units) {
-				for (S& s : unit->dependencies()) {
-					res.push_back(s);
-				}
-			}
-			*/
-			return res;
-		}
-
-		virtual R result() override { return units[0]->result(); }
-	};
-
-	class DeclareAndCall : public virtual Block {
-	public:
-		virtual S declaredType() { return start; }
-
-		virtual R result() = 0;
-	};
-
-	class NewThread : public virtual Block {
-	public:
-		class Start : public virtual Subprocedure {
-		public:
-			bool lock = true;
-
-			virtual bool run() { return lock; }
-		};
-
-	protected:
-		Start* realStart = new Start(); // weak pointer
-		unique_ptr<std::thread> thrd;
-		LogInfo log;
-
-	public:
-		template<typename... Args> NewThread(int verbose, Args... args): log(verbose), Block(realStart, std::forward<Args>(args)...) {}
-
-		virtual bool run() override {
-			realStart->lock = false;
-			thrd.reset(new std::thread([&] {
-				log << "Spawn new thread (" << std::this_thread::get_id() << " for paralleled task...";
-				recursivelyRun();
-			}));
-			return true;
-		}
-
-		virtual R result() override {
-			thrd->join();
-			return units[0]->result();
-		}
-	};
-
-	template<class T, class Derived> requires std::derived_from<Derived, Subprocedure> static T& get(shared_ptr<Derived>& s) try {
-		shared_ptr<T> p = std::any_cast<shared_ptr<T>>(s->getResult());
-		if (!p) {
-			std::cerr << "Fatal bug: Empty result! Forgetting dependencies?" << endl;
-			exit(-1);
-		}
-		return *p;
-	}
-	catch (...) { throw std::runtime_error("Error: Error occur in S::get."); }
 };
 
 template<COLORABLE C> struct DefaultProcedureAttributes {
@@ -227,7 +49,7 @@ template<COLORABLE C> struct DefaultProcedureAttributes {
 	using Random = common::Random<std::mt19937_64>;
 };
 
-template<typename Attributes> class Procedure : public ProcedureBase {
+template<typename Attributes> class Procedure {
 public:
 	using Log = LogInfo;
 	using score_t = Attributes::score_t;
@@ -243,237 +65,223 @@ public:
 	static score_t constexpr ZERO = Placement::ZERO;
 	static score_t constexpr EPSILON = Color::EPSILON;
 
-	class RandomTaxonOrderSubprocedure2 : public virtual Subprocedure {
-		size_t nTaxa;
-		S random;
-		R res;
-
-	public:
-		template<typename... Args> RandomTaxonOrderSubprocedure2(S random, size_t nTaxa, Args... args) : nTaxa(nTaxa), random(random) {
-			addDependency(random, args...);
-		}
-
-		virtual bool run() override {
-			auto& random = get<Random>(this->random);
-			res = prepResult(random.randomTaxonOrder(nTaxa));
-			return true;
-		}
-
-		virtual R result() override { return res; }
-	};
-
-	class RecursivePlacementCall : public virtual DeclareAndCall {
-		using Declared = Input2<Recursive>;
-
-		S color, threadpool, tree, taxa;
-		R res;
-
-		shared_ptr<Declared> declared;
-
-	public:
-		virtual bool run() override {
-			auto& color = get<Color>(this->color);
-			auto& threadpool = get<ThreadPool>(this->threadpool);
-			auto& tree = get<Tree>(this->tree);
-			auto& taxa = get<vector<size_t> >(this->taxa);
-			auto& rp = get<Recursive>(this->declared);
-			rp(color, threadpool, tree, taxa);
-			return true;
-		}
-
-		virtual R result() { return tree->getResult(); }
-
-		template<typename... Args> RecursivePlacementCall(Subprocedure* start, S color, S threadpool, S tree, S taxa, Args... args) : Block(start), color(color), threadpool(threadpool), tree(tree), taxa(taxa) {
-			declared = std::dynamic_pointer_cast<Declared>(this->start);
-			addDependency(color, threadpool, tree, taxa, args...);
-		}
-
-		template<typename... Args> RecursivePlacementCall(int verbose, S color, S threadpool, S tree, S taxa, Args... args) : RecursivePlacementCall(new Declared(verbose, std::forward<Args>(args)...), color, threadpool, tree, taxa, args...) {}
-	};
-
-	class ScoreTreeCall : public virtual DeclareAndCall {
-	public:
-		class Declared : public virtual Subprocedure {
+	struct RP {
+		struct Prereq {
 			int verbose;
-			S color, threadpool, tree;
-			R res;
+			vector<size_t> taxa;
 
-		public:
-			template<typename... Args> Declared(S color, S threadpool, S tree, int verbose, Args... args) : color(color), threadpool(threadpool), tree(tree), verbose(verbose) {
-				addDependency(color, threadpool, tree, args...);
-			}
+			Prereq(int verbose, const vector<size_t>& taxa) : verbose(verbose), taxa(taxa) {}
+		} p;
 
-			virtual bool run() override {
-				auto& color = get<Color>(this->color);
-				auto& threadpool = get<ThreadPool>(this->threadpool);
-				auto& tree = get<Tree>(this->tree);
-				//res = prepResult<Placement>(color, threadpool, tree, verbose);
-				res = prepResult(Placement(color, threadpool, tree, verbose));
-				return true;
-			}
+		RP(Prereq const& req) : p(req) {}
 
-			virtual R result() override { return res; }
-			friend ScoreTreeCall;
-		};
-
-	private:
-		shared_ptr<Declared> declared;
-
-	public:
-
-		virtual bool run() override {
-			Placement& placement = get<Placement>(declared);
-			placement.log() << "Score: " << placement.scoreTree() << endl;
-			return true;
-		}
-
-		virtual R result() { 
-			std::any tree = declared->tree->getResult();
-			Log const vlog(declared->verbose + 1);
-			get<Tree>(declared->tree).displaySimpleNewick(vlog.log()) << endl;
+		Tree operator()(Color& color, ThreadPool& threadpool, Tree tree) {
+			Log log(p.verbose);
+			log.log() << "Running recursive placement (RP) procedure..." << endl;
+			Recursive rp(p.verbose);
+			rp(color, threadpool, tree, p.taxa);
 			return tree;
 		}
 
-		template<typename... Args> ScoreTreeCall(Subprocedure* start, Args... args) : Block(start) {
-			declared = std::dynamic_pointer_cast<Declared>(this->start);
-			addDependency(args...);
+		Tree operator()(Color& color, ThreadPool& threadpool) {
+			Tree tree;
+			return (*this)(color, threadpool, tree, p.taxa);
 		}
-
-		template<typename... Args> ScoreTreeCall(S color, S threadpool, S tree, int verbose, Args... args) : ScoreTreeCall(new Declared(color, threadpool, tree, verbose, std::forward<Args>(args)...)) {}
 	};
 
-	class RTO_RP_ST_Block : public virtual Block {
-	public:
-		template<typename... Args> RTO_RP_ST_Block(S random, S color, S threadpool, S tree, size_t nTaxa, int verbose, Args... args) {
-			addDependency(std::forward<Args>(args)...);
-			S taxa(new RandomTaxonOrderSubprocedure2(random, nTaxa));
-			S rpTree(new RecursivePlacementCall(verbose, color, threadpool, tree, taxa));
-			S stTree(new ScoreTreeCall(color, threadpool, rpTree, verbose));
-			initialize(taxa, rpTree, stTree);
-		}
-
-		template<typename... Args> RTO_RP_ST_Block(S random, S color, S threadpool, size_t nTaxa, int verbose, Args... args) : RTO_RP_ST_Block(random, color, threadpool, sInput<Tree>(), nTaxa, verbose, std::forward<Args>(args)...) {}
-
-		template<typename... Args> RTO_RP_ST_Block(S random, S color, S tree, size_t nThread, size_t iElementBegin, size_t iElementEnd, size_t nTaxa, int verbose, Args... args) : RTO_RP_ST_Block(random, color, sInput<ThreadPool>(nThread, iElementBegin, iElementEnd), tree, nTaxa, verbose, std::forward<Args>(args)...) {}
-
-		template<typename... Args> RTO_RP_ST_Block(S random, S color, size_t nThread, size_t iElementBegin, size_t iElementEnd, size_t nTaxa, int verbose, Args... args) : RTO_RP_ST_Block(random, color, sInput<ThreadPool>(nThread, iElementBegin, iElementEnd), nTaxa, verbose, std::forward<Args>(args)...) {}
-	};
-
-	class NT_RTO_RP_ST_Block : public virtual NewThread {
-		template<typename... Args> NT_RTO_RP_ST_Block(int verbose, Args... args) : NewThread(verbose, S(new RTO_RP_ST_Block(std::forward<Args>(args)...))) {}
-
-		template<typename... Args> NT_RTO_RP_ST_Block(S random, S color, size_t nThread, size_t iElementBegin, size_t iElementEnd, size_t nTaxa, int verbose, Args... args) : NewThread(verbose, S(new RTO_RP_ST_Block(random, color, nThread, iElementBegin, iElementEnd, nTaxa, verbose, std::forward<Args>(args)...))) {}
-	};
-
-	class ConstrainedDPCall : public virtual DeclareAndCall {
-	public:	
-		class Declared : public virtual Subprocedure {
-			size_t nTaxa;
+	struct TP {
+		struct Prereq {
 			int verbose;
-			S random;
-			R res;
+			size_t nThreads, iElementBegin, iElementEnd;
 
-		public:
-			template<typename... Args> Declared(S random, size_t nTaxa, int verbose, Args... args) : random(random), nTaxa(nTaxa), verbose(verbose) {
-				addDependency(random, args...);
-			}
+			Prereq(int verbose, size_t nThreads, size_t iElementBegin, size_t iElementEnd) : verbose(verbose), nThreads(nThreads), iElementBegin(iElementBegin), iElementEnd(iElementEnd) {}
+		} p;
 
-			virtual bool run() override {
-				auto& random = get<Random>(this->random);
-				res = prepResult<ConstrainedDP>(random, nTaxa, verbose);
-				return true;
-			}
+		TP(Prereq const& req) : p(req) {}
 
-			virtual R result() override { return res; }
-		};
-
-	private:
-		shared_ptr<Declared> declared;
-		vector<S> trees;
-		R res;
-
-	public:
-
-		virtual bool run() override {
-			auto& cdp = get<ConstrainedDP>(declared);
-			for (S& tree: trees) {
-				cdp.addTree(get<Tree>(tree));
-			}
-			res = prepResult(cdp.optimalUnrootedTree(ZERO));
-			return true;
-		}
-
-		virtual R result() override { return res; }
-
-		template<typename... Args> ConstrainedDPCall(S start, const vector<S> &trees, Args... args) : Block(start), trees(trees) {
-			declared = std::dynamic_pointer_cast<Declared>(this->start);
-			for (S const& tree: trees) addDependency(tree);
-			addDependency(args...);
-		}
-
-		template<typename... Args> ConstrainedDPCall(Subprocedure* start, const vector<S>& trees, Args... args) : ConstrainedDPCall(S(start), trees, args...) {}
-
-		template<typename... Args> ConstrainedDPCall(S random, size_t nTaxa, int verbose, const vector<S>& trees, Args... args) : ScoreTreeCall(new Declared(random, nTaxa, verbose, std::forward<Args>(args)...)) {}
-	};
-	
-	class CCDP_ST_Block : public virtual Block {
-	public:
-		template<typename... Args> CCDP_ST_Block(S dCDP, vector<S> trees, S color, S threadpool, int verbose, Args... args) : Block(new Subprocedure(args...)) {
-			S cdpTree(new ConstrainedDPCall(dCDP, trees));
-			S stTree(new ScoreTreeCall(color, threadpool, cdpTree, verbose));
-			initialize(cdpTree, stTree);
+		shared_ptr<ThreadPool> operator()() {
+			Log log(p.verbose), vlog(p.verbose + 1);
+			log.log() << "Generating thread pool (TP) with " << p.nThreads << " thread(s)..." << endl;
+			vlog.log() << "Covering data range [" << p.iElementBegin << "," << p.iElementEnd << ")" << endl;
+			shared_ptr<ThreadPool> threadpool(new ThreadPool(p.nThreads, p.iElementBegin, p.iElementEnd) );
+			return threadpool;
 		}
 	};
 
-	class RTO_RP_ST_CCDP_ST_Block : public virtual Block {
-	public:
-		template<typename... Args> RTO_RP_ST_CCDP_ST_Block(S dCDP, S random, S color, S threadpool, size_t nTaxa, size_t nTrees, int verbose, Args... args) : Block(new Subprocedure(args...)) {
-			vector<S> trees;
-			for (size_t iTree : std::views::iota((size_t)0, nTrees)) trees.emplace_back(new RTO_RP_ST_Block(random, color, threadpool, nTaxa, verbose + 1));
-			S tree(new CCDP_ST_Block(dCDP, trees, color, threadpool, verbose));
-			initialize(trees, tree);
+	template<typename X> struct TP_X {
+		struct Prereq {
+			typename X::Prereq x;
+			typename TP::Prereq tp;
+			Prereq(X::Prereq const& x, typename TP::Prereq const& tp) : x(x), tp(tp) {}
+		} p;
+
+		TP_X(Prereq const& req) : p(req) {}
+
+		Tree operator()(Color& color, Tree& tree) {
+			TP tp(p.tp);
+			X x(p.x);
+			shared_ptr<ThreadPool> threadpool = tp();
+			return x(color, *threadpool, tree);
+		}
+
+		Tree operator()(Color& color) {
+			Tree tree;
+			return (*this)(color, tree);
 		}
 	};
-	
-	static Tree recursivePlacementProcedure(S random, Data const& data, size_t nTaxa, size_t nTrees, size_t nThreads, int verbose, size_t iElementBegin, size_t iElementEnd) {
-		S color = sInput<Color>(&data);
-		S threadpool = sInput<ThreadPool>(nThreads, iElementBegin, iElementEnd);
-		S tree = sInput<Tree>();
-		S workflow(new RTO_RP_ST_Block(random, color, threadpool, tree, nTaxa, verbose));
-		return get<Tree>(workflow);
+
+	template<typename X> struct Parallel_X {
+		struct Prereq {
+			int verbose;
+			vector<typename X::Prereq> jobs;
+
+			Prereq(int verbose, const vector<typename X::Prereq>& jobs) : verbose(verbose), jobs(jobs) {}
+		} p;
+
+		Parallel_X(Prereq const& req) : p(req) {}
+
+		vector<Tree> operator()(Color& color) {
+			size_t nJobs = p.jobs.size();
+			vector<std::thread> thrds;
+			vector<Tree> trees(nJobs);
+			for (size_t iJob : std::views::iota((size_t)1, nJobs)) {
+				Tree& tree = trees[iJob];
+				thrds.emplace_back([this, iJob, &color, &tree]() {
+					X job(p.jobs[iJob]);
+					tree = job(color);
+				});
+			}
+			X job0(p.jobs[0]);
+			trees[0] = job0(color);
+			for (auto& t : thrds) t.join();
+			return trees;
+		}
+	};
+
+	using TP_RP = TP_X<RP>;
+	using Parallel_TP_RP = Parallel_X<TP_RP>;
+
+	static typename Parallel_TP_RP::Prereq prereq_Parallel_TP_RP(Random &random, size_t nThreads, size_t iTotalElementBegin, size_t iTotalElementEnd, size_t nParallel, size_t nTaxa, int verbose) {
+		vector<typename TP_RP::Prereq> jobs;
+		size_t nElements = iTotalElementEnd - iTotalElementBegin;
+		for (size_t iParallel : std::views::iota((size_t)0, nParallel)) {
+			size_t iThreadBegin = iParallel * nThreads / nParallel;
+			size_t iThreadEnd = (iParallel + 1) * nThreads / nParallel;
+			size_t iElementBegin = iParallel * nElements / nParallel + iTotalElementBegin;
+			size_t iElementEnd = (iParallel + 1) * nElements / nParallel + iTotalElementBegin;
+
+			typename RP::Prereq rp(verbose + 1, random.randomTaxonOrder(nTaxa));
+			typename TP::Prereq tp(verbose + 2, iThreadEnd - iThreadBegin, iElementBegin, iElementEnd);
+			jobs.emplace_back(rp, tp);
+		}
+		typename Parallel_TP_RP::Prereq p(verbose, jobs);
+		return p;
 	}
-	
-	static Tree recursivePlacementProcedure(S random, Data const& data, size_t nTaxa, size_t nTrees, size_t nThreads, int verbose) {
-		return recursivePlacementProcedure(random, data, nTaxa, nTrees, nThreads, verbose, 0, data.nElements);
+
+	struct ST {
+		struct Prereq {
+			int verbose;
+
+			Prereq(int verbose) : verbose(verbose) {}
+		} p;
+
+		ST(Prereq const& req) : p(req) {}
+
+		Tree operator()(Color& color, ThreadPool& threadpool, Tree& tree) {
+			Placement placement(color, threadpool, tree, p.verbose);
+			placement.log() << "Score: " << placement.scoreTree() << endl;
+			Log vlog(p.verbose + 1);
+			tree.displaySimpleNewick(vlog.log()) << endl;
+			return tree;
+		}
+	};
+
+	struct TP_Sequencial_ST_CDP_ST {
+		struct Prereq {
+			int verbose;
+			typename TP::Prereq tp;
+
+			Prereq(int verbose, typename TP::Prereq const& tp) : verbose(verbose), tp(tp) {}
+		} p;
+
+		TP_Sequencial_ST_CDP_ST(Prereq const& req) : p(req) {}
+
+		Tree operator()(Color& color, vector<Tree>& trees, ConstrainedDP& cdp) {
+			TP tp(p.tp);
+			shared_ptr<ThreadPool> threadpool = tp();
+			for (Tree& tree : trees) {
+				typename ST::Prereq stp(p.verbose + 1);
+				ST st(stp);
+				cdp.addTree(st(color, *threadpool, tree));
+			}
+			typename ST::Prereq stp(p.verbose);
+			ST st(stp);
+			Tree tree = cdp.optimalUnrootedTree(ZERO);
+			return st(color, *threadpool, tree);
+		}
+	};
+
+	static typename TP_Sequencial_ST_CDP_ST::Prereq prereq_TP_Sequencial_ST_CDP_ST(size_t nThreads, size_t iElementBegin, size_t iElementEnd, int verbose) {
+		typename TP::Prereq tp(verbose + 1, nThreads, iElementBegin, iElementEnd);
+		typename TP_Sequencial_ST_CDP_ST::Prereq p(verbose, tp);
+		return p;
 	}
-	
-	static Tree constrainedDPProcedure(S dCDP, S random, Data const& data, size_t nTaxa, size_t nTrees, size_t nThreads, int verbose, size_t iElementBegin, size_t iElementEnd) {
+
+	static Tree subsampleProcedure2(ConstrainedDP &cdp, Random &random, Color& color, Data const& data, size_t nTaxa, size_t nTrees, size_t nThreads, int verbose) {
+		Log::setShowThread();
 		Log log(verbose), vlog(verbose + 1);
-		log.log() << "Running costrained dynamic programming (CDP) procedure..." << endl;
+		log.log() << "Running subsample procedure..." << endl;
 		vlog.log() << "#Rounds: " << nTrees << endl;
 		vlog.log() << "#Threads: " << nThreads << endl;
-		S color = sInput<Color>(&data);
-		S threadpool = sInput<ThreadPool>(nThreads, iElementBegin, iElementEnd);
-		S tree(new RTO_RP_ST_CCDP_ST_Block(dCDP, random, color, threadpool, nTaxa, nTrees, verbose));
-		return get<Tree>(tree);
+		size_t minElements = ARG.get<size_t>("subsample-min");
+		size_t nElements = data.nElements;
+
+		size_t _nPartitions = 1;
+		while (_nPartitions <= nTrees && nElements / (_nPartitions + 1) >= minElements) _nPartitions++;
+		size_t nRuns = (nTrees + _nPartitions - 1) / _nPartitions;
+		// cerr << "nRuns = " << nRuns << endl;
+		vector<Tree> trees;
+		for (size_t iRun : std::views::iota((size_t)0, nRuns)) {
+			size_t iTreeBegin = iRun * nTrees / nRuns;
+			size_t iTreeEnd = (iRun + 1) * nTrees / nRuns;
+			size_t nBatches = iTreeEnd - iTreeBegin;
+			size_t nPartitions = (nBatches + nThreads - 1) / nThreads;
+			// cerr << "nPartitions = " << nPartitions << endl;
+			int newVerbose = (nBatches > 1) ? verbose + 1 : verbose;
+			for (size_t iPartition : std::views::iota((size_t)0, nPartitions)) {
+				size_t iElementBegin = iPartition * nElements / nPartitions;
+				size_t iElementEnd = (iPartition + 1) * nElements / nPartitions;
+				size_t iTreeBegin2 = iPartition * nBatches / nPartitions + iTreeBegin;
+				size_t iTreeEnd2 = (iPartition + 1) * nBatches / nPartitions + iTreeBegin;
+				//cerr << "iTreeBegin = " << iTreeBegin2 << endl;
+				//cerr << "iTreeEnd = " << iTreeEnd2 << endl;
+				//cerr << "iElementBegin = " << iElementBegin << endl;
+				//cerr << "iElementEnd = " << iElementEnd << endl;
+				vlog.log() << "Running " << iTreeEnd2 - iTreeBegin2 << " subsampled tree(s) partitioning element(s) [" << iElementBegin << "," << iElementEnd << ")..." << endl;
+				typename Parallel_TP_RP::Prereq p = prereq_Parallel_TP_RP(random, nThreads, iElementBegin, iElementEnd, iTreeEnd2 - iTreeBegin2, nTaxa, verbose);
+				Parallel_TP_RP job(p);
+
+				for (Tree& tree : job(color)) trees.push_back(tree);
+			}
+		}
+		typename TP_Sequencial_ST_CDP_ST::Prereq p = prereq_TP_Sequencial_ST_CDP_ST(nThreads, 0, data.nElements, verbose);
+		TP_Sequencial_ST_CDP_ST job(p);
+		return job(color, trees, cdp);
 	}
 
-	static Tree constrainedDPProcedure(S dCDP, S random, Data const& data, size_t nTaxa, size_t nTrees, size_t nThreads, int verbose) {
-		return constrainedDPProcedure(dCDP, random, data, nTaxa, nTrees, nThreads, verbose, 0, data.nElements);
+	static Tree defaultProcedure2(ConstrainedDP& cdp, Random& random, Color& color, Data const& data, size_t nTaxa, size_t nTrees, size_t nThreads, int verbose) {
+		return subsampleProcedure2(cdp, random, color, data, nTaxa, nTrees, nThreads, verbose);
 	}
 
-	static Tree defaultProcedure(S dCDP, S random, Data const& data, size_t nTaxa, size_t nTrees, size_t nThreads, int verbose) {
-		return constrainedDPProcedure(dCDP, random, data, nTaxa, nTrees, nThreads, verbose);
-	}
-
-	template<typename... Args> static Tree heuristSearch(Data const& data, size_t nTaxa, size_t r, size_t s, size_t nThreads, int verbose, Tree f(S, S, Data const&, size_t, size_t, size_t, int, Args...), Args... args) {
-		S random = sInput<Random>();
-		S dCDP(new ConstrainedDPCall::Declared(random, nTaxa, verbose));
-		Tree tree = f(dCDP, random, data, nTaxa, r, nThreads, verbose + 1, args...);
+	static Tree heuristSearch2(Data const& data, size_t nTaxa, size_t r, size_t s, size_t nThreads, int verbose, Tree f(ConstrainedDP&, Random&, Color&, Data const&, size_t, size_t, size_t, int)) {
+		Random random;
+		ConstrainedDP cdp(random, nTaxa, verbose);
+		Color color(&data);
+		Tree tree = f(cdp, random, color, data, nTaxa, r, nThreads, verbose + 1);
 		score_t lastScore, newScore = tree.get<score_t>(Tree::SCORE);
 		do {
 			lastScore = newScore;
-			tree = f(dCDP, random, data, nTaxa, s, nThreads, verbose + 1, args...);
+			tree = f(cdp, random, color, data, nTaxa, s, nThreads, verbose + 1);
 			newScore = tree.get<score_t>(Tree::SCORE);
 		} while (newScore > lastScore + EPSILON);
 		return tree;

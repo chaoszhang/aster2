@@ -112,6 +112,7 @@ class LogInfo {
 	struct Shared {
 		unique_ptr<std::ostream> fout;
 		int logVerbose = 0, errVerbose = 0;
+		bool showThreadID = false;
 	};
 
 	static Shared shared;
@@ -137,13 +138,19 @@ public:
 
 	LogInfo const& log() const noexcept {
 		for (int i : std::views::iota(0, verbose)) *this << " ";
-		return *this << "- ";
+		*this << "- ";
+		if (shared.showThreadID) *this << "[" << std::hash<std::thread::id>()(std::this_thread::get_id()) % 10000 << "] ";
+		return *this;
 	}
 
-	static void setVerbose(std::ostream* fout, int logVerbose, int errVerbose) {
+	static void setVerbose(std::ostream* fout, int logVerbose, int errVerbose) noexcept {
 		shared.errVerbose = errVerbose;
 		shared.logVerbose = logVerbose;
 		if (fout) shared.fout.reset(fout);
+	}
+
+	static void setShowThread(bool show = true) noexcept {
+		shared.showThreadID = show;
 	}
 };
 LogInfo::Shared LogInfo::shared;
