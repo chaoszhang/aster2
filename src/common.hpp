@@ -32,6 +32,7 @@ class ChangeLog {
 		vector<Change> all;
 		unordered_map<string, vector<Change> > byCode;
 		string globalVersion;
+		string lastDate;
 	};
 
 public:
@@ -88,7 +89,10 @@ public:
 			updates += change.author + " - "s + change.description + "\n"s;
 		}
 		blocks.push_back(version + updates);
-		if (isGlobal) shared.globalVersion = (blocks.size() > 1) ? version : "v2.0.0";
+		if (isGlobal) {
+			shared.globalVersion = (blocks.size() > 1) ? version : "v2.0.0";
+			shared.lastDate = lastDate;
+		}
 		return blocks;
 	}
 
@@ -100,13 +104,16 @@ public:
 		versioning<true>(shared.all);
 		return shared.globalVersion;
 	}
+
+	string static getLatestUpdateDate() {
+		versioning<true>(shared.all);
+		return shared.lastDate;
+	}
 };
 ChangeLog::Shared ChangeLog::shared;
-/*
-ChangeLog log("ChangeLog",
-"2026-01-25", "Chao Zhang", "New function", "minor",
-"2026-01-26", "Chao Zhang", "Initial patch", "patch");
-*/
+
+ChangeLog logChangeLog("ChangeLog",
+"2026-02-01", "Chao Zhang", "Save date of last update", "patch");
 
 class LogInfo {
 	struct Shared {
@@ -256,6 +263,10 @@ public:
 	}
 };
 
+ChangeLog logInputParser("InputParser",
+"2026-02-01", "Chao Zhang", "Display date of latest update", "patch",
+"2026-02-01", "Chao Zhang", "Exit in name conflict and ensure shortcut format", "patch");
+
 class InputParser : public Attributes {
 	struct Argument {
 		char shortcut;
@@ -296,13 +307,13 @@ class InputParser : public Attributes {
 			}
 			return nameToArgument.at(name);
 		}
-		else if (arg.rfind("-", 0) == 0 && arg.length() > 1) {
+		else if (arg.rfind("-", 0) == 0 && arg.size() == 2) {
 			char shortcut = arg[1];
 			if (shortcut == 'h') {
 				displayHelp(std::cout);
 				exit(0);
 			}
-			if (shortcutToArgument.count(shortcut) == 0) {
+			if (!shortcutToArgument.contains(shortcut)) {
 				displayHelp(std::cerr);
 				std::cerr << "Error: Unknown argument " << arg << std::endl;
 				throw std::invalid_argument("Unknown argument");
@@ -374,8 +385,16 @@ class InputParser : public Attributes {
 public:
 	InputParser() { verbose = 0; }
 
-	template<typename... Args> void addArgument(Args... args) noexcept requires requires { {Argument{ std::forward<Args>(args)... } }; } {
+	template<typename... Args> void addArgument(Args... args) requires requires { {Argument{ std::forward<Args>(args)... } }; } {
 		Argument argument(std::forward<Args>(args)...);
+		if (nameToArgument.contains(argument.name)) {
+			std::cerr << "Bug: Double-defined --" << argument.name << "!" << std::endl;
+			throw std::invalid_argument("Argument name double-defined");
+		}
+		if (shortcutToArgument.contains(argument.shortcut)) {
+			std::cerr << "Bug: Double-defined -" << argument.shortcut << "!" << std::endl;
+			throw std::invalid_argument("Argument shortcut double-defined");
+		}
 		arguments.push_back(argument);
 		nameToArgument[argument.name] = argument;
 		if (argument.shortcut > 0) shortcutToArgument[argument.shortcut] = argument;
@@ -456,7 +475,7 @@ public:
 	}
 
 	void print() {
-		*this << get<string>("FULL_NAME") << " " << ChangeLog::getGlobalVersion() << std::endl;
+		*this << get<string>("FULL_NAME") << " " << ChangeLog::getGlobalVersion() << " (" << ChangeLog::getLatestUpdateDate() << ")" << std::endl;
 		*this << argv0;
 		for (Argument const& argument : arguments) {
 			if (has(argument.name)) {

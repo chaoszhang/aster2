@@ -247,6 +247,9 @@ template<typename DataClasses> DataClasses read() {
 
 };
 
+ChangeLog logmain("Driver",
+	"2026-02-01", "Chao Zhang", "Change prgramName to caster", "patch");
+
 class Driver : public common::LogInfo
 {
 	using string = std::string;
@@ -255,7 +258,7 @@ public:
 	using DataClasses = std::variant<Color<StepwiseColorDefaultAttributes>::SharedConstData>;
 	
 	static std::pair<string, string> programNames() {
-		return { "caster-site", "Coalescence-aware Alignment-based Species Tree EstimatoR (Site)" };
+		return { "caster", "Coalescence-aware Alignment-based Species Tree EstimatoR" };
 	}
 
 	static void addArguments() {
@@ -266,8 +269,6 @@ public:
 		return DriverHelper::read<DataClasses>();
 	}
 };
-
-
 
 };
 #endif
