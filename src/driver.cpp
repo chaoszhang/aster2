@@ -61,8 +61,7 @@ int main(int argc, char* argv[]) {
 	using Alg = optimization_algorithm::Procedure<optimization_algorithm::DefaultProcedureAttributes<typename decltype(stepwiseColorSharedConstData)::ParentClass> >;
 
 	ARG.log() << "Optimiziation algorithm starts..." << endl;
-	//common::AnnotatedBinaryTree tree = Alg::heuristSearch(stepwiseColorSharedConstData, nTaxa, nRounds, nSubsequent, nThreads, 0, Alg::defaultProcedure);
-	common::AnnotatedBinaryTree tree = Alg::heuristSearch2(stepwiseColorSharedConstData, nTaxa, nRounds, nSubsequent, nThreads, 0, Alg::defaultProcedure2);
+	common::AnnotatedBinaryTree tree = Alg::heuristSearch(stepwiseColorSharedConstData, nTaxa, nRounds, nSubsequent, nThreads, 0, Alg::defaultProcedure);
 
 	tree.displaySimpleNewick(ARG.log() << "Final tree: ") << endl;
 

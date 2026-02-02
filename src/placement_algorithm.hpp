@@ -33,6 +33,9 @@ template<stepwise_colorable::STEPWISE_COLORABLE SC> struct StepwiseColorPlacemen
 	template<typename T> using Scheduler = thread_pool::SimpleScheduler<T>;
 };
 
+ChangeLog logStepwiseColorPlacement("StepwiseColorPlacement",
+	"2026-02-02", "Chao Zhang", "Refactoring for conciseness", "patch");
+
 template<STEPWISE_COLOR_PLACEMENT_ATTRIBUTES Attributes> class StepwiseColorPlacement : public common::LogInfo {
 public:
 	using Color = Attributes::Color;
@@ -50,8 +53,6 @@ public:
 	static inline score_t constexpr ZERO = Color::ZERO;
 
 private:
-	template<bool isSetter> using SetterOnlyVector = typename std::conditional<isSetter, vector<size_t>, bool>::type;
-
 	Color &stepwiseColor;
 	ThreadPool &threadPool;
 	Tree &tree;
@@ -59,103 +60,100 @@ private:
 	std::queue<score_t> results;
 	std::unordered_map<Tree::Node*, size_t> leafId;
 	
-	template<bool isSetter> void setColor(SetterOnlyVector<isSetter> const &leaves, size_t iColor) noexcept{
-		if constexpr (isSetter){
-			Color &localStepwiseColor = stepwiseColor;
-			instr.mapFuncs.emplace_back([leaves, iColor, &localStepwiseColor](size_t iElement) noexcept{
-				for (size_t iTaxon: leaves) localStepwiseColor.elementSetTaxonColor(iElement, iTaxon, iColor);
-			});
-		}
-	}
-	
-	template<bool isSetter> void clearColor(SetterOnlyVector<isSetter> const &leaves, size_t iColor) noexcept{
-		if constexpr (isSetter){
-			Color &localStepwiseColor = stepwiseColor;
-			instr.mapFuncs.emplace_back([leaves, iColor, &localStepwiseColor](size_t iElement) noexcept{
-				for (size_t iTaxon: leaves) localStepwiseColor.elementClearTaxonColor(iElement, iTaxon, iColor);
-			});
-		}
-	}
-	
-	template<bool isSetter> void clearSetColor(SetterOnlyVector<isSetter> const &leaves, size_t iColor, size_t jColor) noexcept{
-		if constexpr (isSetter){
-			Color &localStepwiseColor = stepwiseColor;
-			instr.mapFuncs.emplace_back([leaves, iColor, jColor, &localStepwiseColor](size_t iElement) noexcept {
-				for (size_t iTaxon: leaves) {
-					localStepwiseColor.elementClearTaxonColor(iElement, iTaxon, iColor);
-					localStepwiseColor.elementSetTaxonColor(iElement, iTaxon, jColor);
-				}
-			});
-		}
-	}
-	
-	template<bool isSetter> score_t computeScore() noexcept{
+	void setColor(vector<size_t> const &leaves, size_t iColor) noexcept{
 		Color &localStepwiseColor = stepwiseColor;
-		if constexpr (isSetter) {
-			std::function<score_t(size_t)> func = [&localStepwiseColor](size_t iElement) noexcept -> score_t{ return localStepwiseColor.elementScore(iElement); };
-			instr.mapFuncs.emplace_back(func);
-			instr.reduceFuncs.emplace_back([](score_t a, score_t b) noexcept -> score_t{ return a + b; });
-			instr.zeros.push_back(ZERO);
-			return ZERO;
-		}
-		else {
-			score_t res = results.front();
-			results.pop();
-			return res;
-		}
+		instr.mapFuncs.emplace_back([leaves, iColor, &localStepwiseColor](size_t iElement) noexcept{
+			for (size_t iTaxon: leaves) localStepwiseColor.elementSetTaxonColor(iElement, iTaxon, iColor);
+		});
 	}
 	
-	template<bool isSetter, bool isPlacement> SetterOnlyVector<isSetter> colorSubtree(Tree::Node* node, SetterOnlyVector<isSetter> const& newTaxon) noexcept{
-		SetterOnlyVector<isSetter> leaves;
-		score_t score;
-		if (node->isLeaf()){
-			if constexpr(isSetter) leaves.push_back(leafId.at(node));
-			clearSetColor<isSetter>(leaves, 0, 2);
+	void clearColor(vector<size_t> const &leaves, size_t iColor) noexcept{
+		Color &localStepwiseColor = stepwiseColor;
+		instr.mapFuncs.emplace_back([leaves, iColor, &localStepwiseColor](size_t iElement) noexcept{
+			for (size_t iTaxon: leaves) localStepwiseColor.elementClearTaxonColor(iElement, iTaxon, iColor);
+		});
+	}
+	
+	void clearSetColor(vector<size_t> const &leaves, size_t iColor, size_t jColor) noexcept{
+		Color &localStepwiseColor = stepwiseColor;
+		instr.mapFuncs.emplace_back([leaves, iColor, jColor, &localStepwiseColor](size_t iElement) noexcept {
+			for (size_t iTaxon: leaves) {
+				localStepwiseColor.elementClearTaxonColor(iElement, iTaxon, iColor);
+				localStepwiseColor.elementSetTaxonColor(iElement, iTaxon, jColor);
+			}
+		});
+	}
+	
+	void computeScore() noexcept{
+		Color& localStepwiseColor = stepwiseColor;
+		std::function<score_t(size_t)> func = [&localStepwiseColor](size_t iElement) noexcept -> score_t{ return localStepwiseColor.elementScore(iElement); };
+		instr.mapFuncs.emplace_back(func);
+		instr.reduceFuncs.emplace_back([](score_t a, score_t b) noexcept -> score_t{ return a + b; });
+		instr.zeros.push_back(ZERO);
+	}
+
+	score_t getComputedScore() noexcept {
+		score_t res = results.front();
+		results.pop();
+		return res;
+	}
+
+	template<bool isPlacement> vector<size_t> colorSubtreeSet(Tree::Node* node, vector<size_t> const& newTaxon) noexcept{
+		vector<size_t> leaves;
+		if (node->isLeaf()) {
+			leaves.push_back(leafId.at(node));
+			clearSetColor(leaves, 0, 2);
 		}
 		else {
-			SetterOnlyVector<isSetter> rcLeaves = colorSubtree<isSetter, isPlacement>(node->rightChild(), newTaxon);
-			clearSetColor<isSetter>(rcLeaves, 2, 0);
-			leaves = colorSubtree<isSetter, isPlacement>(node->leftChild(), newTaxon);
-			if constexpr(isSetter) for (size_t iTaxon : rcLeaves) leaves.push_back(iTaxon); 
-			clearSetColor<isSetter>(rcLeaves, 0, 1);
-			if constexpr(isPlacement) {
-				clearSetColor<isSetter>(newTaxon, 0, 1);
-				score = computeScore<isSetter>();
-				if constexpr(!isSetter) node->set(PLACE_RIGHT, score);
-				clearSetColor<isSetter>(newTaxon, 1, 2);
-				score = computeScore<isSetter>();
-				if constexpr (!isSetter) node->set(PLACE_LEFT, score);
-				clearSetColor<isSetter>(newTaxon, 2, 0);
-				score = computeScore<isSetter>();
-				if constexpr (!isSetter) node->set(PLACE_ABOVE, score);
+			vector<size_t> rcLeaves = colorSubtreeSet<isPlacement>(node->rightChild(), newTaxon);
+			clearSetColor(rcLeaves, 2, 0);
+			leaves = colorSubtreeSet<isPlacement>(node->leftChild(), newTaxon);
+			clearSetColor(rcLeaves, 0, 1);
+			if constexpr (isPlacement) {
+				clearSetColor(newTaxon, 0, 1);
+				computeScore(); // PLACE_RIGHT
+				clearSetColor(newTaxon, 1, 2);
+				computeScore(); // PLACE_LEFT
+				clearSetColor(newTaxon, 2, 0);
+				computeScore(); // PLACE_ABOVE
 			}
-			else {
-				score = computeScore<isSetter>();
-				if constexpr(!isSetter) node->set(NO_PLACE, score);
-			}
-			clearSetColor<isSetter>(rcLeaves, 1, 2);
+			else computeScore(); // NO_PLACE
+			clearSetColor(rcLeaves, 1, 2);
+			for (size_t iTaxon : rcLeaves) leaves.push_back(iTaxon);
 		}
-		if constexpr(isPlacement) {
-			clearSetColor<isSetter>(newTaxon, 0, 1);
-			score = computeScore<isSetter>();
-			if constexpr(!isSetter) node->set(NEW_NODE, score);
-			clearSetColor<isSetter>(newTaxon, 1, 0);
+		if constexpr (isPlacement) {
+			clearSetColor(newTaxon, 0, 1);
+			computeScore(); // NEW_NODE
+			clearSetColor(newTaxon, 1, 0);
 		}
-
 		return leaves;
+	}
+
+	template<bool isPlacement> void colorSubtreeGet(Tree::Node* node) noexcept {
+		if (!node->isLeaf()){
+			colorSubtreeGet<isPlacement>(node->rightChild());
+			colorSubtreeGet<isPlacement>(node->leftChild());
+			if constexpr (isPlacement) {
+				node->set(PLACE_RIGHT, getComputedScore());
+				node->set(PLACE_LEFT, getComputedScore());
+				node->set(PLACE_ABOVE, getComputedScore());
+			}
+			else node->set(NO_PLACE, getComputedScore());
+		}
+		if constexpr (isPlacement) node->set(NEW_NODE, getComputedScore());
 	}
 	
 	template<bool isPlacement> void labelTree(size_t iNewTaxon = -1) noexcept{
 		vector<size_t> leaves, newTaxon;
 		if constexpr (isPlacement) newTaxon.push_back(iNewTaxon);
 		for (auto const &e : leafId) leaves.push_back(e.second);
-		setColor<true>(leaves, 0);
-		setColor<true>(newTaxon, 0);
-		colorSubtree<true, isPlacement>(tree.root(), newTaxon);
-		clearColor<true>(leaves, 2);
-		clearColor<true>(newTaxon, 0);
+		setColor(leaves, 0);
+		setColor(newTaxon, 0);
+		colorSubtreeSet<isPlacement>(tree.root(), newTaxon);
+		clearColor(leaves, 2);
+		clearColor(newTaxon, 0);
 		for (score_t result: threadPool(instr)) results.push(result);
-		colorSubtree<false, isPlacement>(tree.root(), true);
+		colorSubtreeGet<isPlacement>(tree.root());
 	}
 	
 	score_t scoreSubtree(Tree::Node* node) noexcept{
@@ -183,7 +181,7 @@ private:
 
 public:
 	StepwiseColorPlacement(Color& stepwiseColor, ThreadPool& threadPool, Tree& tree, int verbose = common::LogInfo::DEFAULT_VERBOSE) : stepwiseColor(stepwiseColor), threadPool(threadPool), tree(tree), LogInfo(verbose) {
-		tree.makeLeafHeavyByLeafCount();
+		tree.makeLeftHeavyByLeafCount();
 		for (Tree::Node* node : tree.leaves()) leafId[node] = std::any_cast<size_t>(node->get(LEAF_ID));
 	}
 

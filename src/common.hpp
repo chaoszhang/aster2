@@ -13,6 +13,8 @@ using std::unordered_map;
 using std::unique_ptr;
 using namespace std::string_literals;
 
+string const BUG_REPORT = "Please file a bug report (github.com/chaoszhang/aster2/issues, chaozhang@pku.edu.cn, aster-users@googlegroups.com, or QQ group 130635706) with your log file (log.txt by default) attached! Many thanks!";
+
 class ChangeLog {
 	struct Change {
 		string code;
@@ -35,11 +37,7 @@ class ChangeLog {
 		string lastDate;
 	};
 
-public:
-
-	static Shared shared;
-
-	template<typename... Args> ChangeLog(string const& code, string const& date, string const& author, string const& description, string const& level, Args... args) {
+	template<typename... Args> static void process(string const& code, string const& date, string const& author, string const& description, string const& level, Args... args) {
 		if (date.size() != 10) {
 			std::cerr << "Error: Invalid date format for change log entry (YYYY-MM-DD): " << date << std::endl;
 			throw;
@@ -53,8 +51,15 @@ public:
 		shared.all.push_back(change);
 		shared.byCode[code].push_back(change);
 		if constexpr (sizeof...(args) > 0) {
-			ChangeLog(code, std::forward<Args>(args)...);
+			ChangeLog::process(code, std::forward<Args>(args)...);
 		}
+	}
+
+public:
+	static Shared shared;
+
+	template<typename... Args> ChangeLog(Args... args) {
+		ChangeLog::process(std::forward<Args>(args)...);
 	}
 
 	template<bool isGlobal> static vector<string> versioning(vector<Change>& changes) {
@@ -113,7 +118,8 @@ public:
 ChangeLog::Shared ChangeLog::shared;
 
 ChangeLog logChangeLog("ChangeLog",
-"2026-02-01", "Chao Zhang", "Save date of last update", "patch");
+"2026-02-01", "Chao Zhang", "Save date of last update", "patch",
+"2026-02-02", "Chao Zhang", "Make helper function to constructor", "patch");
 
 class LogInfo {
 	struct Shared {
@@ -370,7 +376,7 @@ class InputParser : public Attributes {
 					set(argument.name, value);
 				}
 				else {
-					std::cerr << "Error: Unknown argument type for argument " << argument.name << ". Please fill a bug report! Many thanks!" << std::endl;
+					std::cerr << "Error: Unknown argument type for argument " << argument.name << ". " << BUG_REPORT << std::endl;
 					throw std::invalid_argument("Unknown argument type");
 				}
 			}
@@ -444,7 +450,7 @@ public:
 							set(argument.name, defaultValue);
 						}
 						catch (const std::exception& e) {
-							std::cerr << "Error: Invalid default integer value for argument " << argument.name << ": " << argument.defaultValue << ". Please fill a bug report! Many thanks!" << std::endl;
+							std::cerr << "Error: Invalid default integer value for argument " << argument.name << ": " << argument.defaultValue << ". " << BUG_REPORT << std::endl;
 							throw std::invalid_argument("Invalid default integer value");
 						}
 					}
@@ -454,14 +460,14 @@ public:
 							set(argument.name, defaultValue);
 						}
 						catch (const std::exception& e) {
-							std::cerr << "Error: Invalid default numeric value for argument " << argument.name << ": " << argument.defaultValue << ". Please fill a bug report! Many thanks!" << std::endl;
+							std::cerr << "Error: Invalid default numeric value for argument " << argument.name << ": " << argument.defaultValue << ". " << BUG_REPORT << std::endl;
 							throw std::invalid_argument("Invalid default numeric value");
 						}
 					}
 					else if (argument.type == "string") set(argument.name, argument.defaultValue);
 					else {
 						displayHelp(std::cerr);
-						std::cerr << "Error: Unknown argument type for argument " << argument.name << ". Please fill a bug report! Many thanks!" << std::endl;
+						std::cerr << "Error: Unknown argument type for argument " << argument.name << ". " << BUG_REPORT << std::endl;
 						throw std::invalid_argument("Unknown argument type");
 					}
 				}
@@ -484,7 +490,7 @@ public:
 				else if (argument.type == "numeric") *this << " " << get<double>(argument.name);
 				else if (argument.type == "string") *this << " " << get<string>(argument.name);
 				else if (argument.type != "flag") {
-					std::cerr << "Error: Unknown argument type for argument " << argument.name << ". Please fill a bug report! Many thanks!" << std::endl;
+					std::cerr << "Error: Unknown argument type for argument " << argument.name << ". " << BUG_REPORT << std::endl;
 					throw std::invalid_argument("Unknown argument type");
 				}
 			}
@@ -543,11 +549,18 @@ template<template<typename> typename T, typename... Args> concept ATTRIBUTES_DIS
 	{attrs.template displayAttributes<Args...>(out, std::forward<T<Args> const &>(args)...)} -> std::same_as<std::ostream &>;
 };
 
+ChangeLog logAnnotatedBinaryTree("AnnotatedBinaryTree",
+	"2026-02-01", "Chao Zhang", "Add NNI and make left heavy", "patch",
+	"2026-02-02", "Chao Zhang", "Bug fix in prune above", "patch");
+
 class AnnotatedBinaryTree : public Attributes{
 public:
 	static inline string const NUM_LEAVES = "NUM_LEAVES";
 	static inline string const LEAF_ID = "LEAF_ID";
 	static inline string const TRIPARTITION_SCORE = "TRIPARTITION_SCORE";
+	static inline string const QUADRIPARTITION_SCORE = "QUADRIPARTITION_SCORE";
+	static inline string const QUADRIPARTITION_ALTERNATIVE_1_SCORE = "QUADRIPARTITION_ALTERNATIVE_1_SCORE";
+	static inline string const QUADRIPARTITION_ALTERNATIVE_2_SCORE = "QUADRIPARTITION_ALTERNATIVE_2_SCORE";
 	static inline string const SCORE = "SCORE";
 
 	class Node : public Attributes{
@@ -631,10 +644,12 @@ public:
 			unique_ptr<Node> cur, sister, parent;
 			
 			if (p->lc.get() == this) {
+				p->rc.get()->p = p->p;
 				cur.swap(p->lc);
 				sister.swap(p->rc);
 			}
 			else {
+				p->lc.get()->p = p->p;
 				cur.swap(p->rc);
 				sister.swap(p->lc);
 			}
@@ -653,6 +668,21 @@ public:
 			tree.rootRef().swap(cur);
 			p = tree.dummy_root.get();
 			return tree;
+		}
+
+		Node* nni() {
+			if (isRoot() || p->isRoot()) {
+				LogInfo err(-100);
+				err << "Cannot perform NNI near root! " << BUG_REPORT << std::endl;
+				throw std::logic_error("Cannot perform NNI near root!");
+			}
+			
+			Node* g = p->p;
+
+			AnnotatedBinaryTree subtree = pruneAbove();
+
+			g->regraftAbove(subtree);
+			return this;
 		}
 		
 		template<typename... Args> std::ostream &displaySubtree(std::ostream &out, String<Args> const &... args) const{
@@ -693,12 +723,25 @@ public:
 			return out;
 		}
 		
-		size_t makeLeafHeavyByLeafCount() noexcept{
+		size_t makeSubtreeLeftHeavyByLeafCount() noexcept{
 			size_t leafcnt;
 			if (isLeaf()) leafcnt = 1;
 			else{
-				size_t lcLeafcnt = lc->makeLeafHeavyByLeafCount();
-				size_t rcLeafcnt = rc->makeLeafHeavyByLeafCount();
+				size_t lcLeafcnt = lc->makeSubtreeLeftHeavyByLeafCount();
+				size_t rcLeafcnt = rc->makeSubtreeLeftHeavyByLeafCount();
+				leafcnt = lcLeafcnt + rcLeafcnt;
+				if (lcLeafcnt < rcLeafcnt) swapChildren();
+			}
+			set(NUM_LEAVES, leafcnt);
+			return leafcnt;
+		}
+
+		size_t makeLeftHeavyByLeafCount() noexcept {
+			size_t leafcnt;
+			if (isLeaf()) leafcnt = 1;
+			else {
+				size_t lcLeafcnt = lc->has<size_t>(NUM_LEAVES) ? lc->get<size_t>(NUM_LEAVES) : lc->makeSubtreeLeftHeavyByLeafCount();
+				size_t rcLeafcnt = rc->has<size_t>(NUM_LEAVES) ? rc->get<size_t>(NUM_LEAVES) : rc->makeSubtreeLeftHeavyByLeafCount();
 				leafcnt = lcLeafcnt + rcLeafcnt;
 				if (lcLeafcnt < rcLeafcnt) swapChildren();
 			}
@@ -778,7 +821,7 @@ public:
 		return out;
 	}
 	
-	void makeLeafHeavyByLeafCount() noexcept{ if (!empty()) root()->makeLeafHeavyByLeafCount(); }
+	void makeLeftHeavyByLeafCount() noexcept{ if (!empty()) root()->makeSubtreeLeftHeavyByLeafCount(); }
 	
 	vector<Node*> leaves() noexcept{
 		vector<Node*> res;

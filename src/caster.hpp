@@ -34,6 +34,9 @@ struct StepwiseColorDefaultAttributes{
 	static inline score_t constexpr EPSILON = 1e-3;
 };
 
+ChangeLog logColor("Color",
+	"2026-02-02", "Chao Zhang", "Supporting quadripartiton", "minor");
+
 template<STEPWISE_COLOR_ATTRIBUTES Attributes> class Color{
 public:
 	using score_t = Attributes::score_t;
@@ -68,14 +71,14 @@ public:
 
 private:
 	SharedConstData const* const sharedConstData;
-    vector<array<array<cnt_t, 4>, 3> > colorCnts; // colorCnts[iGenomePos][iColor][iNucleotide] -> count
+    vector<array<array<cnt_t, 4>, 4> > colorCnts; // colorCnts[iGenomePos][iColor][iNucleotide] -> count
 
 	template<bool isSet> inline void elementSetOrClearTaxonColor(size_t iElement, size_t iTaxon, size_t iColor) noexcept{
 		typename SharedConstData::Element const& element = sharedConstData->elements[iElement];
 		if (!element.hasTaxon(iTaxon)) return;
 		index_t iRow = element.taxon2row[iTaxon];
-		for (index_t iPos : iota(0, element.nPos)){
-			for (index_t iNucleotide : iota(0, 4)) {
+		for (index_t iPos : iota((index_t)0, element.nPos)){
+			for (index_t iNucleotide : iota((index_t)0, (index_t)4)) {
 				cnt_t& colorCnt = colorCnts[element.iGenomePosBegin + iPos][iColor][iNucleotide];
 				cnt_t cnt = element.cnts[iRow][iPos][iNucleotide];
 				if constexpr (isSet) colorCnt += cnt;
@@ -89,7 +92,7 @@ private:
 			 + y0 * (y0 - 1) * x1 * x2 + y1 * (y1 - 1) * x2 * x0 + y2 * (y2 - 1) * x0 * x1;
 	}
 
-	inline static score_t scorePos(array<array<cnt_t, 4>, 3> const &cnt, array<score_t, 4> const &pi) noexcept{
+	inline static score_t scorePos(array<array<cnt_t, 4>, 4> const &cnt, array<score_t, 4> const &pi) noexcept{
 		//lst = simplify([sABCD(R, R, Y, Y); sABCD(A, A, Y, Y); sABCD(C, C, R, R); sABCD(A, A, C, C)])
 		//sol = [Pa^2*Pc^2; -Pc^2*(Pa + Pg)^2; -Pa^2*(Pc + Pt)^2; (Pa + Pg)^2*(Pc + Pt)^2]
 		//lst2 = simplify([sABCD(Y, Y, R, R); sABCD(Y, Y, A, A); sABCD(R, R, C, C); sABCD(C, C, A, A)])
@@ -120,6 +123,49 @@ private:
 			 + (aacc + aatt + ggcc + ggtt) * (R * R) * (Y * Y);
 	}
 	
+	inline static cnt4_t quadXXYY(cnt4_t x0, cnt4_t x1, cnt4_t x2, cnt4_t x3, cnt4_t y0, cnt4_t y1, cnt4_t y2, cnt4_t y3) noexcept {
+		return x0 * x1 * y2 * y3 + y0 * y1 * x2 * x3;
+	}
+
+	inline static score_t quadPos(array<cnt_t, 4> const& cnt0, array<cnt_t, 4> const& cnt1,
+		array<cnt_t, 4> const& cnt2, array<cnt_t, 4> const& cnt3, array<score_t, 4> const& pi) noexcept {
+		//lst = simplify([sABCD(R, R, Y, Y); sABCD(A, A, Y, Y); sABCD(C, C, R, R); sABCD(A, A, C, C)])
+		//sol = [Pa^2*Pc^2; -Pc^2*(Pa + Pg)^2; -Pa^2*(Pc + Pt)^2; (Pa + Pg)^2*(Pc + Pt)^2]
+		//lst2 = simplify([sABCD(Y, Y, R, R); sABCD(Y, Y, A, A); sABCD(R, R, C, C); sABCD(C, C, A, A)])
+
+		// (Pa^2+Pg^2)*(Pc^2+Pt^2)*sABCD(R, R, Y, Y)
+		// -Pr^2*(Pc^2+Pt^2)*sABCD(A, A, Y, Y) -Pr^2*(Pc^2+Pt^2)*sABCD(G, G, Y, Y) -(Pa^2+Pg^2)*Py^2*sABCD(C, C, R, R) -(Pa^2+Pg^2)*Py^2*sABCD(T, T, R, R)
+		// +Pr^2*Py^2*sABCD(A, A, C, C) +Pr^2*Py^2*sABCD(G, G, C, C) +Pr^2*Py^2*sABCD(A, A, T, T) +Pr^2*Py^2*sABCD(G, G, T, T)
+
+		score_t const A = pi[0], C = pi[1], G = pi[2], T = pi[3];
+		score_t const R = A + G, Y = C + T, R2 = A * A + G * G, Y2 = C * C + T * T;
+		cnt4_t const a0 = cnt0[0], c0 = cnt0[1], g0 = cnt0[2], t0 = cnt0[3], r0 = a0 + g0, y0 = c0 + t0;
+		cnt4_t const a1 = cnt1[0], c1 = cnt1[1], g1 = cnt1[2], t1 = cnt1[3], r1 = a1 + g1, y1 = c1 + t1;
+		cnt4_t const a2 = cnt2[0], c2 = cnt2[1], g2 = cnt2[2], t2 = cnt2[3], r2 = a2 + g2, y2 = c2 + t2;
+		cnt4_t const a3 = cnt3[0], c3 = cnt3[1], g3 = cnt3[2], t3 = cnt3[3], r3 = a3 + g3, y3 = c3 + t3;
+
+		cnt4_t const rryy = quadXXYY(r0, r1, r2, r3, y0, y1, y2, y3);
+
+		cnt4_t const aayy = quadXXYY(a0, a1, a2, a3, y0, y1, y2, y3);
+		cnt4_t const ggyy = quadXXYY(g0, g1, g2, g3, y0, y1, y2, y3);
+		cnt4_t const rrcc = quadXXYY(r0, r1, r2, r3, c0, c1, c2, c3);
+		cnt4_t const rrtt = quadXXYY(r0, r1, r2, r3, t0, t1, t2, t3);
+
+		cnt4_t const aacc = quadXXYY(a0, a1, a2, a3, c0, c1, c2, c3);
+		cnt4_t const aatt = quadXXYY(a0, a1, a2, a3, t0, t1, t2, t3);
+		cnt4_t const ggcc = quadXXYY(g0, g1, g2, g3, c0, c1, c2, c3);
+		cnt4_t const ggtt = quadXXYY(g0, g1, g2, g3, t0, t1, t2, t3);
+
+		return rryy * R2 * Y2 - (aayy + ggyy) * (R * R) * Y2 - (rrcc + rrtt) * R2 * (Y * Y)
+			+ (aacc + aatt + ggcc + ggtt) * (R * R) * (Y * Y);
+	}
+
+	inline static array<score_t, 3> quadPos(array<array<cnt_t, 4>, 4> const& cnt, array<score_t, 4> const& pi) noexcept {
+		return { quadPos(cnt[0], cnt[1], cnt[2], cnt[3], pi),
+				quadPos(cnt[0], cnt[2], cnt[1], cnt[3], pi),
+				quadPos(cnt[0], cnt[3], cnt[1], cnt[2], pi) };
+	}
+
 public:
 	void elementSetTaxonColor(size_t iElement, size_t iTaxon, size_t iColor) noexcept{
 		elementSetOrClearTaxonColor<true>(iElement, iTaxon, iColor);
@@ -135,8 +181,21 @@ public:
 		typename SharedConstData::Element const& element = sharedConstData->elements[iElement];
 
 		score_t res = 0;
-		for (index_t iPos : iota(0, nPos)){
+		for (index_t iPos : iota((index_t)0, nPos)){
 			res += scorePos(colorCnts[iGenomePosBegin + iPos], element.eqFreqs);
+		}
+		return res;
+	}
+
+	array<score_t, 3> elementQuadripartitionScores(size_t iElement) const noexcept {
+		index_t iGenomePosBegin = sharedConstData->elements[iElement].iGenomePosBegin;
+		index_t nPos = sharedConstData->elements[iElement].nPos;
+		typename SharedConstData::Element const& element = sharedConstData->elements[iElement];
+
+		array<score_t, 3> res = {0, 0, 0};
+		for (index_t iPos : iota((index_t)0, nPos)) {
+			array<score_t, 3> part = quadPos(colorCnts[iGenomePosBegin + iPos], element.eqFreqs);
+			for (index_t i : iota((index_t)0, (index_t)3)) res[i] += part[i];
 		}
 		return res;
 	}
