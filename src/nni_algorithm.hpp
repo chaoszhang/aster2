@@ -19,7 +19,6 @@ template<class T> concept QUADRIPARTITION_SCORE_ALGORITHM = requires(T t, typena
 	requires std::same_as<array<typename T::score_t, 3>, typename T::ThreadPool::score_t>;
 	requires thread_pool::THREAD_POOL<typename T::ThreadPool>;
 	{ T{ color, threadPool, tree, verbose } };
-	{ t.labelTree(annotator) };
 	{ t.labelTree() };
 };
 
@@ -33,7 +32,6 @@ template<class Attributes> concept STEPWISE_COLOR_QUADRIPARTITION_SCORE_ATTRIBUT
 	requires stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE<typename Attributes::Color>;
 	requires thread_pool::SCHEDULER<Attributes::template Scheduler, typename Attributes::Color::score_t>;
 	{ score + score } noexcept -> std::convertible_to<typename Attributes::score_t const>;
-	{ score - score } noexcept -> std::convertible_to<typename Attributes::score_t const>;
 	{ Attributes::ZERO } noexcept -> std::convertible_to<typename Attributes::score_t const>;
 };
 
@@ -41,7 +39,18 @@ template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE SC, typename Sta
 	using Color = SC;
 	using score_t = Stats;
 	template<typename T> using Scheduler = thread_pool::SimpleScheduler<T>;
+	
 	static inline score_t const ZERO = score_t::ZERO;
+
+	static array<score_t, 3> map(Color& color, size_t iElement) { return Stats::construct(color, iElement); }
+
+	static score_t reduce(score_t const& a, score_t const& b) { return a + b; }
+
+	static void annotate(common::AnnotatedBinaryTree::Node* node, score_t left_right, score_t left_outgroup, score_t right_outgroup) {
+		node->set(common::AnnotatedBinaryTree::QUADRIPARTITION_SCORE, left_right);
+		node->set(common::AnnotatedBinaryTree::QUADRIPARTITION_ALTERNATIVE_1_SCORE, left_outgroup);
+		node->set(common::AnnotatedBinaryTree::QUADRIPARTITION_ALTERNATIVE_2_SCORE, right_outgroup);
+	}
 };
 
 template<class Attributes> concept STEPWISE_COLOR_NNI_ATTRIBUTES = requires{
@@ -54,10 +63,17 @@ template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE SC> struct Stepw
 	using score_t = Color::score_t;
 	template<typename T> using Scheduler = thread_pool::SimpleScheduler<T>;
 	static inline score_t constexpr ZERO = Color::ZERO;
+
+	static array<score_t, 3> map(Color& color, size_t iElement) { return color.elementQuadripartitionScores(iElement); }
+
+	static score_t reduce(score_t const& a, score_t const& b) { return a + b; }
+
+	static void annotate(common::AnnotatedBinaryTree::Node*, score_t, score_t, score_t) noexcept {}
 };
 
 ChangeLog logStepwiseColorQuadripartitionScore("StepwiseColorQuadripartitionScore",
-	"2026-02-02", "Chao Zhang", "Initial code", "minor");
+	"2026-02-02", "Chao Zhang", "Initial code", "minor",
+	"2026-02-04", "Chao Zhang", "Fix interface for computing support", "patch");
 
 template<STEPWISE_COLOR_QUADRIPARTITION_SCORE_ATTRIBUTES Attributes> class StepwiseColorQuadripartitionScore : public common::LogInfo {
 public:
@@ -65,9 +81,6 @@ public:
 	using score_t = Attributes::score_t;
 	using ThreadPool = thread_pool::ThreadPool<array<score_t, 3>, Attributes::template Scheduler>;
 	using Tree = common::AnnotatedBinaryTree;
-	static inline string const LEFT_RIGHT = Tree::QUADRIPARTITION_SCORE;
-	static inline string const LEFT_OUTGROUP = Tree::QUADRIPARTITION_ALTERNATIVE_1_SCORE;
-	static inline string const RIGHT_OUTGROUP = Tree::QUADRIPARTITION_ALTERNATIVE_2_SCORE;
 	static inline string const LEAF_ID = Tree::LEAF_ID;
 	static inline score_t const ZERO = Attributes::ZERO;
 
@@ -105,9 +118,9 @@ protected:
 
 	void computeScore() noexcept {
 		Color& localStepwiseColor = stepwiseColor;
-		std::function<array<score_t, 3>(size_t)> func = [&localStepwiseColor](size_t iElement) noexcept -> array<score_t, 3> { return localStepwiseColor.elementQuadripartitionScores(iElement); };
+		std::function<array<score_t, 3>(size_t)> func = [&localStepwiseColor](size_t iElement) noexcept -> array<score_t, 3> { return Attributes::map(localStepwiseColor, iElement); };
 		instr.mapFuncs.emplace_back(func);
-		instr.reduceFuncs.emplace_back([](array<score_t, 3> a, array<score_t, 3> b) noexcept -> array<score_t, 3> { return { a[0] + b[0], a[1] + b[1], a[2] + b[2] }; });
+		instr.reduceFuncs.emplace_back([](array<score_t, 3> a, array<score_t, 3> b) noexcept -> array<score_t, 3> { return { Attributes::reduce(a[0], b[0]), Attributes::reduce(a[1], b[1]), Attributes::reduce(a[2], b[2]) }; });
 		instr.zeros.push_back({ZERO , ZERO , ZERO});
 	}
 
@@ -275,19 +288,13 @@ protected:
 
 	static void dummyAnnotator(Tree::Node*, score_t, score_t, score_t) noexcept {}
 
-	static void defaultAnnotator(Tree::Node* node, score_t left_right, score_t left_outgroup, score_t right_outgroup) {
-		node->set(LEFT_RIGHT, left_right);
-		node->set(LEFT_OUTGROUP, left_outgroup);
-		node->set(RIGHT_OUTGROUP, right_outgroup);
-	}
-
 public:
 	StepwiseColorQuadripartitionScore(Color& stepwiseColor, ThreadPool& threadPool, Tree& tree, int verbose = common::LogInfo::DEFAULT_VERBOSE) : stepwiseColor(stepwiseColor), threadPool(threadPool), tree(tree), LogInfo(verbose) {
 		tree.makeLeftHeavyByLeafCount();
 		for (Tree::Node* node : tree.leaves()) leafId[node] = std::any_cast<size_t>(node->get(LEAF_ID));
 	}
 
-	void labelTree(void annotator(Tree::Node*, score_t, score_t, score_t) = defaultAnnotator) noexcept { colorTree<false>(annotator); }
+	void labelTree() noexcept { colorTree<false>(Attributes::anotate); }
 };
 
 ChangeLog logStepwiseColorNNI("StepwiseColorNNI",

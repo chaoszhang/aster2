@@ -551,7 +551,7 @@ template<template<typename> typename T, typename... Args> concept ATTRIBUTES_DIS
 
 ChangeLog logAnnotatedBinaryTree("AnnotatedBinaryTree",
 	"2026-02-01", "Chao Zhang", "Add NNI and make left heavy", "patch",
-	"2026-02-02", "Chao Zhang", "Bug fix in prune above", "patch");
+	"2026-02-02", "Chao Zhang", "Bug fix in prune above and implementation of deep copy", "patch");
 
 class AnnotatedBinaryTree : public Attributes{
 public:
@@ -756,6 +756,50 @@ public:
 				rc->subtreeLeaves(leaves);
 			}
 		}
+
+		void subtreeNodes(vector<Node*>& nodes) noexcept {
+			nodes.push_back(this);
+			if (!isLeaf()){
+				lc->subtreeNodes(nodes);
+				rc->subtreeNodes(nodes);
+			}
+		}
+
+		Node* deepCopy() noexcept {
+			Node* copy = new Node();
+			Attributes& aThis = *this;
+			Attributes& aCopy = *copy;
+			aCopy = aThis;
+			if (!isLeaf()) {
+				copy->lc.reset(lc->deepCopy());
+				copy->rc.reset(rc->deepCopy());
+				copy->lc->p = copy;
+				copy->rc->p = copy;
+			};
+			return copy;
+		}
+
+		void swap(Node* other) {
+			Node* pThis = p;
+			Node* pOther = other->p;
+			unique_ptr<Node>& a = (pThis->lc.get() == this) ? pThis->lc : pThis->rc;
+			unique_ptr<Node>& b = (pOther->lc.get() == other) ? pOther->lc : pOther->rc;
+			a.swap(b);
+			p = pOther;
+			other->p = pThis;
+		}
+
+		void swapLeftChildren(Node* other) {
+			lc.swap(other->lc);
+			if (lc) lc->p = this;
+			if (other->lc) other->lc->p = other;
+		}
+
+		void swapRightChildren(Node* other) {
+			rc.swap(other->rc);
+			if (rc) rc->p = this;
+			if (other->rc) other->rc->p = other;
+		}
 		
 		friend class AnnotatedBinaryTree;
 	};
@@ -827,6 +871,24 @@ public:
 		vector<Node*> res;
 		if (!empty()) root()->subtreeLeaves(res);
 		return res;
+	}
+
+	vector<Node*> nodes() noexcept {
+		vector<Node*> res;
+		if (!empty()) root()->subtreeNodes(res);
+		return res;
+	}
+
+	AnnotatedBinaryTree deepCopy() noexcept {
+		AnnotatedBinaryTree copy;
+		Attributes& aThis = *this;
+		Attributes& aCopy = copy;
+		aCopy = aThis;
+		if (!empty()) {
+			copy.rootRef().reset(root()->deepCopy());
+			copy.root()->p = copy.dummy_root.get();
+		};
+		return copy;
 	}
 };
 

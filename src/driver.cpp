@@ -28,13 +28,14 @@ int main(int argc, char* argv[]) {
 	ARG.addArgument('o', "output", "string", "Output file path, print to stdout if not provided", 5, true);
 	ARG.addArgument('t', "thread", "integer", "Number of threads", 4, true, true, "1");
 	ARG.addArgument('a', "mapping", "string", "Mapping file path, a list of gene/speicesman name to taxon name maps, each line contains one gene/speicesman name followed by one taxon name separated by a space or tab", 3, true, false);
-	ARG.addArgument('r', "initial-round", "integer", "Number of initial rounds of placement", 2, true, true, "16");
-	ARG.addArgument('s', "subsequent-round", "integer", "Number of subsequent rounds of placement", 2, true, true, "16");
-	ARG.addArgument('\0', "verbose", "integer", "Verbose level", 0, true, true, "2");
+	ARG.addArgument('r', "initial-round", "integer", "Number of initial rounds of placement", 2, true, true, "8");
+	ARG.addArgument('s', "subsequent-round", "integer", "Number of subsequent rounds of placement", 2, true, true, "8");
+	ARG.addArgument('\0', "verbose", "integer", "Verbose level", 0, true, true, "4");
 	ARG.addArgument('\0', "no-log", "flag", "Don't generate log file", 1, true);
 	ARG.addArgument('\0', "log", "string", "Log file path", 0, true, true, "log.txt");
-	ARG.addArgument('\0', "log-verbose", "integer", "Verbose level in log file", 0, true, true, "3");
-	ARG.addArgument('\0', "subsample-min", "integer", "Minimum #Elements in each division when using subsample procedure", 0, true, true, "1000");
+	ARG.addArgument('\0', "log-verbose", "integer", "Verbose level in log file", 0, true, true, "5");
+	ARG.addArgument('\0', "no-two-step", "flag", "Never use two-step placement algorithm", 1, true);
+	ARG.addArgument('\0', "subsample-min", "integer", "Minimum #Elements in each division when using subsample procedure", 1, true, true, "1000");
 	my_tool::Driver::addArguments();
 
 	ARG.parse(argc, argv);

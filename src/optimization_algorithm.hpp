@@ -42,6 +42,153 @@ public:
 	}
 };
 
+ChangeLog logTwoStepPlacement("TwoStepPlacement",
+	"2026-02-05", "Chao Zhang", "Initial version", "minor");
+
+template<placement_algorithm::PLACEMENT_ALGORITHM PlacementAlgorithm, nni_algorithm::NNI_ALGORITHM NNIAlgorithm, bool UNROOTED = true> class TwoStepPlacement : public LogInfo {
+	using Tree = common::AnnotatedBinaryTree;
+
+	size_t nThreads, iElementBegin, iElementEnd;
+
+public:
+	TwoStepPlacement(size_t nThreads, size_t iElementBegin, size_t iElementEnd, int verbose = LogInfo::DEFAULT_VERBOSE) : LogInfo(verbose), nThreads(nThreads), iElementBegin(iElementBegin), iElementEnd(iElementEnd){}
+
+	Tree operator()(typename PlacementAlgorithm::Color& color, std::ranges::range auto const& taxa) {
+		LogInfo const v1log(verbose + 1);
+		LogInfo const v2log(verbose + 2);
+		LogInfo const v3log(verbose + 3);
+		LogInfo const v4log(verbose + 4);
+		Tree backbone;
+		vector<size_t> taxonOrder;
+		for (size_t iTaxon : taxa) taxonOrder.push_back(iTaxon);
+		size_t nLeaves = taxonOrder.size();
+		size_t nBackboneLeaves = std::sqrt(nLeaves * std::log2(nLeaves));
+		log() << "Two-step placement..." << endl;
+		{
+			v1log.log() << "Building backbone..." << endl;
+			RecursivePlacement<PlacementAlgorithm> backboneRP(verbose + 2);
+			typename PlacementAlgorithm::ThreadPool threadpool(nThreads, iElementBegin, iElementEnd);
+			backboneRP(color, threadpool, backbone, taxonOrder | std::views::take(nBackboneLeaves));
+		}
+		{
+			v2log.log() << "Applying NNI moves to backbone..." << endl;
+			typename NNIAlgorithm::ThreadPool threadpool3(nThreads, iElementBegin, iElementEnd);
+			NNIAlgorithm nniAlg(color, threadpool3, backbone, verbose + 1);
+			nniAlg.performNNI();
+		}
+		{
+			v1log.log() << "Determining the branches of placement on backbone..." << endl;
+			typename PlacementAlgorithm::ThreadPool threadpool(nThreads, iElementBegin, iElementEnd);
+			std::unordered_map<Tree::Node*, vector<size_t> > subtreeTaxa;
+			std::unordered_map<size_t, Tree::Node*> branchOfPlacement;
+			{
+				for (size_t iTaxon : taxonOrder | std::views::drop(nBackboneLeaves)) {
+					PlacementAlgorithm placement(color, threadpool, backbone, verbose + 1);
+					v2log.log() << "Determining the branch of placement for " << common::taxonName2ID[iTaxon] << "..." << endl;
+					Tree::Node* branch = placement.optimalPlacement(iTaxon);
+					if (UNROOTED && (branch == backbone.root()->leftChild() || branch == backbone.root()->rightChild())) branch = backbone.root();
+					branchOfPlacement[iTaxon] = branch;
+					subtreeTaxa[branch].push_back(iTaxon);
+				}
+			}
+			v1log.log() << "Building per branch subtrees..." << endl;
+			std::unordered_map<Tree::Node*, std::tuple<Tree, Tree::Node*, Tree::Node*> > subtrees;
+			vector<size_t> orphans;
+			for (size_t iTaxon : taxonOrder | std::views::drop(nBackboneLeaves)) {
+				Tree::Node* backboneBranch = branchOfPlacement[iTaxon];
+				if (subtrees.contains(backboneBranch)) continue;
+				
+				v2log.log() << "Building the per branch subtree where " << common::taxonName2ID[iTaxon] << " was placed..." << endl;
+				Tree subtree = backbone.deepCopy();
+				vector<size_t> const& taxa2place = subtreeTaxa[backboneBranch];
+				Tree::Node *branch, *sister;
+				std::unordered_set<Tree::Node*> badBranches;
+				if (backboneBranch->isRoot()) {
+					for (Tree::Node* node : subtree.nodes()) {
+						if (node == subtree.root()) continue;
+						if (UNROOTED && node == subtree.root()->leftChild()) continue;
+						if (UNROOTED && node == subtree.root()->rightChild()) continue;
+						badBranches.insert(node);
+					}
+					if (UNROOTED) {
+						branch = subtree.root()->leftChild();
+						sister = subtree.root()->rightChild();
+					}
+					else {
+						branch = subtree.root();
+						sister = nullptr;
+					}
+				}
+				else {
+					vector<bool> location;
+					for (Tree::Node* node = backboneBranch; !node->isRoot(); node = node->parent()) {
+						location.push_back(node == node->parent()->leftChild());
+					}
+					branch = subtree.root();
+					for (bool isLeft : location | std::views::reverse) {
+						branch = (isLeft) ? branch->leftChild() : branch->rightChild();
+					}
+					for (Tree::Node* node : subtree.nodes()) {
+						if (node == branch) continue;
+						badBranches.insert(node);
+					}
+					sister = (location[0]) ? branch->parent()->rightChild() : branch->parent()->leftChild();
+				}
+				for (size_t jTaxon : taxa2place) {
+					v3log.log() << "Try placing " << common::taxonName2ID[jTaxon] << "..." << endl;
+					PlacementAlgorithm placement(color, threadpool, subtree, verbose + 2);
+					Tree::Node* placedBranch = placement.optimalPlacement(jTaxon);
+					if (badBranches.contains(placedBranch)) {
+						v3log.log() << "Failed! Postponed for later..." << endl;
+						orphans.push_back(jTaxon);
+					}
+					else placedBranch->emplaceAbove(Tree::LEAF_ID, jTaxon);
+					subtree.displaySimpleNewick(v4log.log()) << endl;
+				}
+				subtrees[backboneBranch] = {subtree, branch, sister};
+			}
+			v1log.log() << "Merging per branch subtrees..." << endl;
+			for (auto const& element : subtrees) {
+				Tree::Node* backboneBranch = element.first;
+				auto& [subtree, branch, sister] = element.second;
+				if (backboneBranch->isRoot()) {
+					if (UNROOTED) {
+						// branch == oldSubtree.root()->leftChild();
+						// sister == oldSubtree.root()->rightChild();
+						branch->swapLeftChildren(backbone.root()->leftChild());
+						branch->swapRightChildren(backbone.root()->leftChild());
+						sister->swapLeftChildren(backbone.root()->rightChild());
+						sister->swapRightChildren(backbone.root()->rightChild());
+						subtree.root()->swap(backbone.root());
+					}
+					else {
+						// branch == oldSubtree.root();
+						branch->swapLeftChildren(backbone.root());
+						branch->swapRightChildren(backbone.root());
+						branch->parent()->swap(backbone.root());
+						subtree.root()->swap(backbone.root());
+					}
+				}
+				else {
+					if (backboneBranch == backboneBranch->parent()->rightChild()) backboneBranch->parent()->swapChildren();
+					if (sister == sister->parent()->leftChild()) sister->parent()->swapChildren();
+					branch->swapLeftChildren(backboneBranch);
+					branch->swapRightChildren(backboneBranch);
+					sister->parent()->leftChild()->swap(backboneBranch);
+				}
+			}
+
+			v1log.log() << "Placing postponed taxa if any..." << endl;
+			{
+				RecursivePlacement<PlacementAlgorithm> orphanRP(verbose + 1);
+				orphanRP(color, threadpool, backbone, orphans);
+			}
+		}
+		backbone.displaySimpleNewick(v1log.log() << "Two-step placed tree: ") << endl;
+		return backbone;
+	}
+};
+
 template<COLORABLE C> struct DefaultProcedureAttributes {
 	using Color = C;
 	using score_t = Color::score_t;
@@ -65,6 +212,7 @@ public:
 	using ThreadPool3 = thread_pool::ThreadPool<std::array<score_t, 3>, Scheduler>;
 	using Recursive = RecursivePlacement<Placement>;
 	using NNIAlg = Attributes::NNIAlg;
+	using TwoStep = TwoStepPlacement<Placement, NNIAlg>;
 	using ConstrainedDP = constrained_dp_algorithm::ConstrainedDP<score_t, Random>;
 	static score_t constexpr ZERO = Placement::ZERO;
 	static score_t constexpr EPSILON = Color::EPSILON;
@@ -90,6 +238,23 @@ public:
 		Tree operator()(Color& color, ThreadPool& threadpool) {
 			Tree tree;
 			return (*this)(color, threadpool, tree, p.taxa);
+		}
+	};
+
+	struct TSP {
+		struct Prereq {
+			int verbose;
+			size_t nThreads, iElementBegin, iElementEnd;
+			vector<size_t> taxa;
+
+			Prereq(int verbose, size_t nThreads, size_t iElementBegin, size_t iElementEnd, const vector<size_t>& taxa) : verbose(verbose), nThreads(nThreads), iElementBegin(iElementBegin), iElementEnd(iElementEnd), taxa(taxa) {}
+		} p;
+
+		TSP(Prereq const& req) : p(req) {}
+
+		Tree operator()(Color& color) {
+			TwoStep tsp(p.nThreads, p.iElementBegin, p.iElementEnd, p.verbose);
+			return tsp(color, p.taxa);
 		}
 	};
 
@@ -168,6 +333,7 @@ public:
 	};
 
 	using Parallel_TP_RP = Parallel_X<TP_RP>;
+	using Parallel_TSP = Parallel_X<TSP>;
 
 	static typename Parallel_TP_RP::Prereq prereq_Parallel_TP_RP(Random &random, size_t nThreads, size_t iTotalElementBegin, size_t iTotalElementEnd, size_t nParallel, size_t nTaxa, int verbose) {
 		vector<typename TP_RP::Prereq> jobs;
@@ -183,6 +349,22 @@ public:
 			jobs.emplace_back(rp, tp);
 		}
 		typename Parallel_TP_RP::Prereq p(verbose, jobs);
+		return p;
+	}
+
+	static typename Parallel_TSP::Prereq prereq_Parallel_TSP(Random& random, size_t nThreads, size_t iTotalElementBegin, size_t iTotalElementEnd, size_t nParallel, size_t nTaxa, int verbose) {
+		vector<typename TSP::Prereq> jobs;
+		size_t nElements = iTotalElementEnd - iTotalElementBegin;
+		for (size_t iParallel : std::views::iota((size_t)0, nParallel)) {
+			size_t iThreadBegin = iParallel * nThreads / nParallel;
+			size_t iThreadEnd = (iParallel + 1) * nThreads / nParallel;
+			size_t iElementBegin = iParallel * nElements / nParallel + iTotalElementBegin;
+			size_t iElementEnd = (iParallel + 1) * nElements / nParallel + iTotalElementBegin;
+
+			typename TSP::Prereq tp(verbose + 1, iThreadEnd - iThreadBegin, iElementBegin, iElementEnd, random.randomTaxonOrder(nTaxa));
+			jobs.emplace_back(tp);
+		}
+		typename Parallel_TSP::Prereq p(verbose, jobs);
 		return p;
 	}
 
@@ -363,10 +545,16 @@ public:
 				//cerr << "iElementBegin = " << iElementBegin << endl;
 				//cerr << "iElementEnd = " << iElementEnd << endl;
 				vlog.log() << "Running " << iTreeEnd2 - iTreeBegin2 << " subsampled tree(s) partitioning element(s) [" << iElementBegin << "," << iElementEnd << ")..." << endl;
-				typename Parallel_TP_RP::Prereq p = prereq_Parallel_TP_RP(random, nThreads, iElementBegin, iElementEnd, iTreeEnd2 - iTreeBegin2, nTaxa, verbose);
-				Parallel_TP_RP job(p);
-
-				for (Tree& tree : job(color)) trees.push_back(tree);
+				if (ARG.has("no-two-step") || nTaxa < 200) {
+					typename Parallel_TP_RP::Prereq p = prereq_Parallel_TP_RP(random, nThreads, iElementBegin, iElementEnd, iTreeEnd2 - iTreeBegin2, nTaxa, verbose);
+					Parallel_TP_RP job(p);
+					for (Tree& tree : job(color)) trees.push_back(tree);
+				}
+				else {
+					typename Parallel_TSP::Prereq p = prereq_Parallel_TSP(random, nThreads, iElementBegin, iElementEnd, iTreeEnd2 - iTreeBegin2, nTaxa, verbose);
+					Parallel_TSP job(p);
+					for (Tree& tree : job(color)) trees.push_back(tree);
+				}
 			}
 		}
 		typename TP_Sequential_ST::Prereq tp_sq_stp = prereq_TP_Sequential_ST(nThreads, 0, data.nElements, verbose);

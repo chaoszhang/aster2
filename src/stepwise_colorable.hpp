@@ -1,7 +1,7 @@
 #ifndef STEPWISE_COLORABLE_HPP
 #define STEPWISE_COLORABLE_HPP
 
-#include "std_include.hpp"
+#include "common.hpp"
 
 namespace stepwise_colorable{
 
@@ -19,7 +19,7 @@ template<class T> concept STEPWISE_COLORABLE = requires(T t, typename T::SharedC
 };
 
 ChangeLog logQUADRIPARTITION_STEPWISE_COLORABLE("QUADRIPARTITION_STEPWISE_COLORABLE",
-	"2026-02-02", "Chao Zhang", "Supporting quadripartiton", "minor");
+	"2026-02-02", "Chao Zhang", "Supporting quadripartiton", "patch");
 
 template<class T> concept QUADRIPARTITION_STEPWISE_COLORABLE = requires(T t, std::size_t index)
 {

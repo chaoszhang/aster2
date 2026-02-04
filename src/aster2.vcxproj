@@ -139,6 +139,7 @@
     <ClInclude Include="alignment_utilities.hpp" />
     <ClInclude Include="common.hpp" />
     <ClInclude Include="driver.hpp" />
+    <ClInclude Include="nni_algorithm.hpp" />
     <ClInclude Include="optimization_algorithm.hpp" />
     <ClInclude Include="placement_algorithm.hpp" />
     <ClInclude Include="std_include.hpp" />
