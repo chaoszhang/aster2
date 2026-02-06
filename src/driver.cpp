@@ -1,4 +1,5 @@
 #include "optimization_algorithm.hpp"
+#include "quadripartition_support.hpp"
 
 #ifdef CASTER
 #include "caster.hpp"
@@ -59,21 +60,25 @@ int main(int argc, char* argv[]) {
 	ARG.log() << "#Initial-rounds: " << nRounds << endl;
 	ARG.log() << "#Subsequent-rounds: " << nSubsequent << endl;
 
-	using Alg = optimization_algorithm::Procedure<optimization_algorithm::DefaultProcedureAttributes<typename decltype(stepwiseColorSharedConstData)::ParentClass> >;
+	using Color = decltype(stepwiseColorSharedConstData)::ParentClass;
+
+	using Alg = optimization_algorithm::Procedure<optimization_algorithm::DefaultProcedureAttributes<Color> >;
 
 	ARG.log() << "Optimiziation algorithm starts..." << endl;
 	common::AnnotatedBinaryTree tree = Alg::heuristSearch(stepwiseColorSharedConstData, nTaxa, nRounds, nSubsequent, nThreads, 0, Alg::defaultProcedure);
 
 	tree.displaySimpleNewick(ARG.log() << "Final tree: ") << endl;
 
+	using SupportAlg = quadripartition_support::Procedure<quadripartition_support::ProcedureAttributes<Color> >;
+	SupportAlg::annotate({}, stepwiseColorSharedConstData, tree, nThreads, 0);
 
 	if (ARG.has("output")) {
 		std::ofstream fout(ARG.get<string>("output"));
-		tree.displaySimpleNewick<double, double>(fout, "support", "length");
+		tree.displaySimpleNewick<double, double>(fout, "LocalBlockBootstrap", "length");
 		fout << endl;
 	}
 	else {
-		tree.displaySimpleNewick<double, double>(std::cout, "support", "length");
+		tree.displaySimpleNewick<double, double>(std::cout, "LocalBlockBootstrap", "length");
 		std::cout << endl;
 	}
 	return 0;

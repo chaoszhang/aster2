@@ -49,6 +49,7 @@ template<STEPWISE_COLOR_ATTRIBUTES Attributes> class Color{
 
 public:
 	using score_t = Attributes::score_t;
+	static inline score_t constexpr IS_ROOTED = false;
 	static inline score_t constexpr ZERO = Attributes::ZERO;
 	static inline score_t constexpr EPSILON = Attributes::EPSILON;
 	

@@ -10,6 +10,7 @@ template<class T> concept STEPWISE_COLORABLE = requires(T t, typename T::SharedC
 	requires std::convertible_to<typename T::SharedConstData::ParentClass, T>;
 	{ data.nElements } noexcept -> std::convertible_to<size_t>;
 	requires std::integral<typename T::score_t> || std::floating_point<typename T::score_t>;
+	{T::IS_ROOTED} noexcept -> std::convertible_to<bool>;
 	{T::ZERO} noexcept -> std::convertible_to<typename T::score_t const>;
 	{T::EPSILON} noexcept -> std::convertible_to<typename T::score_t const>;
 	{T{dataPtr}} noexcept;

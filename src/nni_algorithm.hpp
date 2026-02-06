@@ -31,26 +31,21 @@ template<class T> concept NNI_ALGORITHM = requires {
 template<class Attributes> concept STEPWISE_COLOR_QUADRIPARTITION_SCORE_ATTRIBUTES = requires(typename Attributes::score_t score){
 	requires stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE<typename Attributes::Color>;
 	requires thread_pool::SCHEDULER<Attributes::template Scheduler, typename Attributes::Color::score_t>;
-	{ score + score } noexcept -> std::convertible_to<typename Attributes::score_t const>;
 	{ Attributes::ZERO } noexcept -> std::convertible_to<typename Attributes::score_t const>;
 };
 
-template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE SC, typename Stats> struct StepwiseColorQuadripartitionScoreDefaultAttributes {
+template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE SC, typename Support> struct StepwiseColorQuadripartitionScoreDefaultAttributes {
 	using Color = SC;
-	using score_t = Stats;
+	using score_t = Support;
 	template<typename T> using Scheduler = thread_pool::SimpleScheduler<T>;
 	
 	static inline score_t const ZERO = score_t::ZERO;
 
-	static array<score_t, 3> map(Color& color, size_t iElement) { return Stats::construct(color, iElement); }
+	static array<score_t, 3> map(Color& color, size_t iElement) { return score_t::map(color, iElement); }
 
-	static score_t reduce(score_t const& a, score_t const& b) { return a + b; }
+	static score_t reduce(score_t const& a, score_t const& b) { return score_t::reduce(a, b); }
 
-	static void annotate(common::AnnotatedBinaryTree::Node* node, score_t left_right, score_t left_outgroup, score_t right_outgroup) {
-		node->set(common::AnnotatedBinaryTree::QUADRIPARTITION_SCORE, left_right);
-		node->set(common::AnnotatedBinaryTree::QUADRIPARTITION_ALTERNATIVE_1_SCORE, left_outgroup);
-		node->set(common::AnnotatedBinaryTree::QUADRIPARTITION_ALTERNATIVE_2_SCORE, right_outgroup);
-	}
+	static void annotate(common::AnnotatedBinaryTree::Node* node, score_t left_right, score_t left_outgroup, score_t right_outgroup) { score_t::annotate(node, left_right, left_outgroup, right_outgroup); }
 };
 
 template<class Attributes> concept STEPWISE_COLOR_NNI_ATTRIBUTES = requires{
@@ -83,6 +78,7 @@ public:
 	using Tree = common::AnnotatedBinaryTree;
 	static inline string const LEAF_ID = Tree::LEAF_ID;
 	static inline score_t const ZERO = Attributes::ZERO;
+	static inline bool const IS_ROOTED = Color::IS_ROOTED;
 
 protected:
 	Color& stepwiseColor;
@@ -192,12 +188,12 @@ protected:
 			if (!rc->isLeaf()) {
 				rcScores = getComputedScore(); // (o-c|ab-d, o-ab|c-d, o-d|c-ab)
 				auto [oc, cd, od] = rcScores;
-				annotator(rc, cd, oc, od);
+				if (IS_ROOTED || !node->isRoot() || !lc->isLeaf()) annotator(rc, cd, oc, od);
 			}
 			if (!lc->isLeaf()) {
 				lcScores = getComputedScore(); // (o-cd|a-b, o-a|cd-b, o-b|cd-a)
 				auto [ab, oa, ob] = lcScores;
-				annotator(lc, ab, oa, ob);
+				if (IS_ROOTED || !node->isRoot() || !rc->isLeaf()) annotator(lc, ab, oa, ob);
 			}
 		}
 
@@ -294,7 +290,7 @@ public:
 		for (Tree::Node* node : tree.leaves()) leafId[node] = std::any_cast<size_t>(node->get(LEAF_ID));
 	}
 
-	void labelTree() noexcept { colorTree<false>(Attributes::anotate); }
+	void labelTree() noexcept { colorTree<false>(Attributes::annotate); }
 };
 
 ChangeLog logStepwiseColorNNI("StepwiseColorNNI",

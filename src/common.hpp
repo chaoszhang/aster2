@@ -561,6 +561,7 @@ public:
 	static inline string const QUADRIPARTITION_SCORE = "QUADRIPARTITION_SCORE";
 	static inline string const QUADRIPARTITION_ALTERNATIVE_1_SCORE = "QUADRIPARTITION_ALTERNATIVE_1_SCORE";
 	static inline string const QUADRIPARTITION_ALTERNATIVE_2_SCORE = "QUADRIPARTITION_ALTERNATIVE_2_SCORE";
+	static inline string const NORMALIZED_QUADRIPARTITION_SCORE = "NORMALIZED_QUADRIPARTITION_SCORE";
 	static inline string const SCORE = "SCORE";
 
 	class Node : public Attributes{
