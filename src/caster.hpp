@@ -19,19 +19,17 @@ template<class Attributes> concept STEPWISE_COLOR_ATTRIBUTES = requires
 {
     requires std::integral<typename Attributes::score_t> || std::floating_point<typename Attributes::score_t>;
 	requires std::integral<typename Attributes::cnt_t> || std::floating_point<typename Attributes::cnt_t>;
-	requires std::integral<typename Attributes::cnt2_t> || std::floating_point<typename Attributes::cnt2_t>;
 	requires std::integral<typename Attributes::cnt4_t> || std::floating_point<typename Attributes::cnt4_t>;
 	requires std::integral<typename Attributes::index_t>;
 	{ Attributes::ZERO } -> std::convertible_to<typename Attributes::score_t>;
 	{ Attributes::EPSILON } -> std::convertible_to<typename Attributes::score_t>;
 };
 
-struct StepwiseColorDefaultAttributes{
+template<typename cnt_taxon_type = unsigned char, typename cnt_type = unsigned short> struct StepwiseColorDefaultAttributes {
 	using score_t = double;
-	using cnt_taxon_t = unsigned char;
-	using cnt_t = unsigned short;
-	using cnt2_t = unsigned int;
-	using cnt4_t = long long;
+	using cnt_taxon_t = cnt_taxon_type;
+	using cnt_t = cnt_type;
+	using cnt4_t = std::conditional_t<std::same_as<cnt_type, unsigned char>, unsigned int, unsigned long long>;
 	using index_t = long long;
 	static inline score_t constexpr ZERO = 0;
 	static inline score_t constexpr EPSILON = 1e-3;
@@ -43,7 +41,6 @@ ChangeLog logColor("Color",
 template<STEPWISE_COLOR_ATTRIBUTES Attributes> class Color{
 	using cnt_taxon_t = Attributes::cnt_taxon_t;
 	using cnt_t = Attributes::cnt_t;
-	using cnt2_t = Attributes::cnt2_t;
 	using cnt4_t = Attributes::cnt4_t;
 	using index_t = Attributes::index_t;
 
@@ -232,12 +229,20 @@ namespace DriverHelper {
 		return result;
 	}
 
-	template<typename DataClasses> DataClasses read() {
-		using DataClass0 = std::variant_alternative_t<0, DataClasses>;
-		DataClass0 sharedConstData;
+	template<typename DataClass> void sancheck(size_t nTotalSpeciesmen, unordered_map<size_t, size_t> const& nSpeciesmen) {
+		
+	}
+
+	template<typename DataClass> DataClass read() {
+		using cnt_taxon_t = DataClass::ParentClass::cnt_taxon_t;
+		using cnt_t = DataClass::ParentClass::cnt_t;
+
+		common::LogInfo log(1);
+		log.log() << "Try if this data structure works..." << std::endl;
+		DataClass sharedConstData;
 
 		const string& file = ARG.get<string>("input");
-		aligment_utilities::AlignmentParser AP(file, 1), AP2(file, 2);
+		aligment_utilities::AlignmentParser AP(file, 2), AP2(file, 3);
 		while (AP.nextAlignment()) {
 			AP2.nextAlignment();
 			size_t nSites = AP.getLength();
@@ -248,10 +253,15 @@ namespace DriverHelper {
 			size_t iElementBegin = sharedConstData.elements.size();
 			unordered_map<size_t, size_t> taxon2row;
 			{
+				size_t nTotalSpeciesmen = 0;
+				unordered_map<size_t, size_t> nSpeciesmen;
 				vector<array<unsigned short, 4> > freq;
 				freq.resize(AP.getLength());
 				while (AP.nextSeq()) {
 					size_t iTaxon = common::taxonName2ID[AP.getName()];
+					nTotalSpeciesmen++;
+					nSpeciesmen[iTaxon]++;
+
 					if (!taxon2row.count(iTaxon)) taxon2row[iTaxon] = taxon2row.size();
 					string seq = AP.getSeq();
 					for (size_t i = 0; i < seq.size(); i++) {
@@ -263,6 +273,35 @@ namespace DriverHelper {
 						}
 					}
 				}
+
+				size_t maxSpeciesman = 0;
+				for (auto const& element : nSpeciesmen) {
+					maxSpeciesman = std::max(maxSpeciesman, element.second);
+				}
+
+				if (std::same_as<cnt_taxon_t, bool> && maxSpeciesman >= 2) {
+					log.log() << "Seems there is more than one haploid genome per taxon and thus bool type cannot be used..." << std::endl;
+					throw(std::logic_error("Incompatible data structure"));
+				}
+				if (std::same_as<cnt_taxon_t, unsigned char> && maxSpeciesman >= 256) {
+					log.log() << "Seems there are more than 255 haploid genomes per taxon (which is fishy) and thus unsigned char type cannot be used..." << std::endl;
+					throw(std::logic_error("Incompatible data structure"));
+				}
+				if (std::same_as<cnt_taxon_t, unsigned short> && maxSpeciesman >= 65536) {
+					common::LogInfo err(-100);
+					err.log() << "Seems there are more than 65535 haploid genomes per taxon (which is astonishing)! Please ask the author for a specially made version..." << std::endl;
+					exit(-1);
+				}
+				if (std::same_as<cnt_t, unsigned char> && nTotalSpeciesmen >= 256) {
+					log.log() << "Seems there are more than 255 haploid genomes in total and thus unsigned char type cannot be used..." << std::endl;
+					throw(std::logic_error("Incompatible data structure"));
+				}
+				if (std::same_as<cnt_t, unsigned short> && nTotalSpeciesmen >= 65536) {
+					common::LogInfo err(-100);
+					err.log() << "Seems there are more than 65535 haploid genomes in total (which is fishy)! Please ask the author for a specially made version..." << std::endl;
+					exit(-1);
+				}
+
 				for (size_t i = 0; i < nChunk; i++) {
 					size_t s = i * nSites / nChunk, t = (i + 1) * nSites / nChunk;
 					array<size_t, 4> sumFreq = {};
@@ -280,10 +319,10 @@ namespace DriverHelper {
 				}
 			}
 			for (size_t i = 0; i < nChunk; i++) {
-				typename DataClass0::Element element;
+				typename DataClass::Element element;
 				element.iGenomePosBegin = sharedConstData.nGenomePos;
 				element.nPos = sites[i].size();
-				element.cnts.resize(taxon2row.size(), vector<array<typename DataClass0::ParentClass::cnt_taxon_t, 4> >(element.nPos));
+				element.cnts.resize(taxon2row.size(), vector<array<typename DataClass::ParentClass::cnt_taxon_t, 4> >(element.nPos));
 				element.taxon2row.resize(common::taxonName2ID.nTaxa(), -1);
 				element.eqFreqs = eqfreq[i];
 				sharedConstData.elements.push_back(element);
@@ -295,14 +334,14 @@ namespace DriverHelper {
 				size_t iRow = taxon2row[iTaxon];
 				string seq = AP2.getSeq();
 				for (size_t iChunk : iota((size_t) 0, nChunk)) {
-					typename DataClass0::Element &element = sharedConstData.elements[iElementBegin + iChunk];
+					typename DataClass::Element &element = sharedConstData.elements[iElementBegin + iChunk];
 					element.taxon2row[iTaxon] = iRow;
 					for (size_t iPos : iota((size_t) 0, sites[iChunk].size())) {
 						switch (seq[sites[iChunk][iPos]]) {
-							case 'A': element.cnts[iRow][iPos][0]++; break;
-							case 'C': element.cnts[iRow][iPos][1]++; break;
-							case 'G': element.cnts[iRow][iPos][2]++; break;
-							case 'T': element.cnts[iRow][iPos][3]++; break;
+							case 'A': element.cnts[iRow][iPos][0] += 1; break;
+							case 'C': element.cnts[iRow][iPos][1] += 1; break;
+							case 'G': element.cnts[iRow][iPos][2] += 1; break;
+							case 'T': element.cnts[iRow][iPos][3] += 1; break;
 						}
 					}
 				}
@@ -314,14 +353,15 @@ namespace DriverHelper {
 };
 
 ChangeLog logDriver("Driver",
-	"2026-02-01", "Chao Zhang", "Change prgramName to caster", "patch");
+	"2026-02-01", "Chao Zhang", "Change prgramName to caster", "patch",
+	"2026-02-08", "Chao Zhang", "Adding more type support", "patch");
 
 class Driver : public common::LogInfo
 {
 	using string = std::string;
 
 public:
-	using DataClasses = std::variant<Color<StepwiseColorDefaultAttributes>::SharedConstData>;
+	using DataClasses = std::variant<typename Color<StepwiseColorDefaultAttributes<bool, unsigned char> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<unsigned char, unsigned char> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<bool, unsigned short> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<unsigned char, unsigned short> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<unsigned short, unsigned short> >::SharedConstData>;
 	
 	static std::pair<string, string> programNames() {
 		return { "caster", "Coalescence-aware Alignment-based Species Tree EstimatoR" };
@@ -332,7 +372,11 @@ public:
 	}
 
 	static DataClasses getStepwiseColorSharedConstData(){
-		return DriverHelper::read<DataClasses>();
+		try { return DriverHelper::read<std::variant_alternative_t<0, DataClasses> >(); } catch (...) {}
+		try { return DriverHelper::read<std::variant_alternative_t<1, DataClasses> >(); } catch (...) {}
+		try { return DriverHelper::read<std::variant_alternative_t<2, DataClasses> >(); } catch (...) {}
+		try { return DriverHelper::read<std::variant_alternative_t<3, DataClasses> >(); } catch (...) {}
+		return DriverHelper::read<std::variant_alternative_t<4, DataClasses> >();
 	}
 };
 
