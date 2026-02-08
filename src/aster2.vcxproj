@@ -133,7 +133,7 @@
     </ClCompile>
     <ClCompile Include="constrained_dp_algorithm.hpp" />
     <ClCompile Include="driver.cpp" />
-    <ClCompile Include="quadripartition_support.cpp" />
+    <ClCompile Include="quadripartition_support.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="algorithm.hpp" />

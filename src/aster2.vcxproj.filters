@@ -24,6 +24,9 @@
     <ClCompile Include="constrained_dp_algorithm.hpp">
       <Filter>头文件</Filter>
     </ClCompile>
+    <ClCompile Include="quadripartition_support.hpp">
+      <Filter>头文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="common.hpp">

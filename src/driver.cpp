@@ -14,7 +14,8 @@ using std::endl;
 using namespace std::string_literals;
 
 ChangeLog logmain("main",
-	"2026-02-01", "Chao Zhang", "Change default -r -s --subsample-min", "patch");
+	"2026-02-01", "Chao Zhang", "Change default -r -s --subsample-min", "patch",
+	"2026-02-08", "Chao Zhang", "Add --root option", "patch");
 
 int main(int argc, char* argv[]) {
 	using std::string;
@@ -31,6 +32,7 @@ int main(int argc, char* argv[]) {
 	ARG.addArgument('a', "mapping", "string", "Mapping file path, a list of gene/speicesman name to taxon name maps, each line contains one gene/speicesman name followed by one taxon name separated by a space or tab", 3, true, false);
 	ARG.addArgument('r', "initial-round", "integer", "Number of initial rounds of placement", 2, true, true, "8");
 	ARG.addArgument('s', "subsequent-round", "integer", "Number of subsequent rounds of placement", 2, true, true, "8");
+	ARG.addArgument('\0', "root", "string", "specify the most distant outgroup species", 0, true, false);
 	ARG.addArgument('\0', "verbose", "integer", "Verbose level", 0, true, true, "4");
 	ARG.addArgument('\0', "no-log", "flag", "Don't generate log file", 1, true);
 	ARG.addArgument('\0', "log", "string", "Log file path", 0, true, true, "log.txt");
@@ -42,6 +44,8 @@ int main(int argc, char* argv[]) {
 	ARG.parse(argc, argv);
 	common::LogInfo::setVerbose(ARG.has("no-log") ? nullptr : new std::ofstream(ARG.get<string>("log")), ARG.get<size_t>("log-verbose"), ARG.get<size_t>("verbose"));
 	ARG.print();
+
+	if (ARG.has("root")) common::taxonName2ID[ARG.get<string>("root")];
 
 	ARG.log() << "Parsing input file(s)..." << endl;
 
