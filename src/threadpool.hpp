@@ -17,6 +17,9 @@ template<NonVoid score_t> struct Instruction{
 	vector<score_t> zeros;
 };
 
+ChangeLog logTask("Task",
+	"2026-02-12", "Chao Zhang", "Reorder executions for better cache hits", "patch");
+
 template<NonVoid score_t, std::ranges::range Range> struct Task{
 	Instruction<score_t> const *const instr;
 	Range elementRange;
@@ -25,6 +28,7 @@ template<NonVoid score_t, std::ranges::range Range> struct Task{
 		instr(instr), elementRange(elementRange){}
 	
 	vector<score_t> operator()() const noexcept{
+		/*
 		vector<score_t> res;
 		size_t iReduce = 0;
 		for (size_t iMap : iota((size_t) 0, instr->mapFuncs.size())){
@@ -44,6 +48,22 @@ template<NonVoid score_t, std::ranges::range Range> struct Task{
 				iReduce++;
 			}
 		}
+		*/
+		vector<score_t> res = instr->zeros;
+		for (size_t iElement : elementRange) {
+			size_t iReduce = 0;
+			for (auto &map : instr->mapFuncs) {
+				if (std::holds_alternative<std::function<void(size_t)> >(map)) {
+					std::get<std::function<void(size_t)> >(map)(iElement);
+				}
+				else {
+					auto& reduce = instr->reduceFuncs[iReduce];
+					res[iReduce] = reduce(res[iReduce], std::get<std::function<score_t(size_t)> >(map)(iElement));
+					iReduce++;
+				}
+			}
+		}
+		
 		return res;
 	}
 };
