@@ -229,10 +229,6 @@ namespace DriverHelper {
 		return result;
 	}
 
-	template<typename DataClass> void sancheck(size_t nTotalSpeciesmen, unordered_map<size_t, size_t> const& nSpeciesmen) {
-		
-	}
-
 	template<typename DataClass> DataClass read() {
 		using cnt_taxon_t = DataClass::ParentClass::cnt_taxon_t;
 		using cnt_t = DataClass::ParentClass::cnt_t;
@@ -244,7 +240,6 @@ namespace DriverHelper {
 		const string& file = ARG.get<string>("input");
 		aligment_utilities::AlignmentParser AP(file, 2), AP2(file, 3);
 		while (AP.nextAlignment()) {
-			AP2.nextAlignment();
 			size_t nSites = AP.getLength();
 			size_t chunkMaxSize = ARG.get<size_t>("chunk");
 			size_t nChunk = (nSites + chunkMaxSize - 1) / chunkMaxSize;
@@ -252,6 +247,7 @@ namespace DriverHelper {
 			vector<array<double, 4> > eqfreq;
 			size_t iElementBegin = sharedConstData.elements.size();
 			unordered_map<size_t, size_t> taxon2row;
+			
 			{
 				size_t nTotalSpeciesmen = 0;
 				unordered_map<size_t, size_t> nSpeciesmen;
@@ -307,17 +303,19 @@ namespace DriverHelper {
 					array<size_t, 4> sumFreq = {};
 					for (size_t j = s; j < t; j++) {
 						sumFreq += freq[j];
-	#ifdef CUSTOMIZED_ANNOTATION_TERMINAL_LENGTH
+					#ifdef CUSTOMIZED_ANNOTATION_TERMINAL_LENGTH
 						sites[i].push_back(j);
-	#else
+					#else
 						if (freq[j][0] + freq[j][2] >= 2 && freq[j][1] + freq[j][3] >= 2) sites[i].push_back(j);
-	#endif
+					#endif
 					}
 					double total = sum(sumFreq);
 					if (total > 0) eqfreq.push_back({ sumFreq[0] / total, sumFreq[1] / total, sumFreq[2] / total, sumFreq[3] / total });
 					else eqfreq.push_back({ 0.25, 0.25, 0.25, 0.25 });
 				}
 			}
+
+			AP2.nextAlignment();
 			for (size_t i = 0; i < nChunk; i++) {
 				typename DataClass::Element element;
 				element.iGenomePosBegin = sharedConstData.nGenomePos;
@@ -329,6 +327,7 @@ namespace DriverHelper {
 				sharedConstData.nElements++;
 				sharedConstData.nGenomePos += element.nPos;
 			}
+
 			while (AP2.nextSeq()) {
 				size_t iTaxon = common::taxonName2ID[AP2.getName()];
 				size_t iRow = taxon2row[iTaxon];

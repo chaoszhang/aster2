@@ -7,9 +7,13 @@ namespace aligment_utilities {
 
 using namespace std;
 
+ChangeLog logAlignmentParser("AlignmentParser",
+    "2026-02-13", "Chao Zhang", "Speeding up preprocess", "patch");
+
 class AlignmentParser : common::LogInfo {
     bool isFasta = false, isFastaList = false, isPhylip = false;
-    bool formatAmbiguity = false, formatAA2NA = false, formatAA = false, formatNA = false;
+    bool formatAmbiguity = false, formatNA = false;
+    bool ambiguitySecond = true;
 
     queue<string> fastaQueue;
     string bufferName, bufferSeq, nextLine;
@@ -17,11 +21,15 @@ class AlignmentParser : common::LogInfo {
     int phylipNspecies;
     bool firstFastaSeq;
     ifstream fin;
+    vector<char> file_buffer;
+    char NA[256] = {};
 
-    bool ambiguitySecond = true;
+    static size_t constexpr BUFFER_SIZE = 1024 * 1024;
 
 public:
-    AlignmentParser(string fileName, int verbose = common::LogInfo::DEFAULT_VERBOSE, string fileFormat = "auto", string seqFormat = "NA"): LogInfo(verbose) {
+    AlignmentParser(string fileName, int verbose = common::LogInfo::DEFAULT_VERBOSE, string fileFormat = "auto", string seqFormat = "NA"): LogInfo(verbose), file_buffer(BUFFER_SIZE) {
+        fin.rdbuf()->pubsetbuf(file_buffer.data(), BUFFER_SIZE);
+
         ifstream ftemp(fileName);
         string temp;
         if (!getline(ftemp, temp) || temp.length() == 0) {
@@ -32,9 +40,13 @@ public:
         else if (fileFormat == "fasta" || (fileFormat == "auto" && seemsFasta(temp))) initFasta(fileName);
         else initFastaList(fileName);
         if (seqFormat == "ambiguity") formatAmbiguity = true;
-        else if (seqFormat == "AA2NA") formatAA2NA = true;
-        else if (seqFormat == "AA") formatAA = true;
         else formatNA = true;
+
+        for (size_t i : std::views::iota(0, 256)) NA[i] = '-';
+        NA['A'] = NA['a'] = 'A';
+        NA['C'] = NA['c'] = 'C';
+        NA['G'] = NA['g'] = 'G';
+        NA['T'] = NA['t'] = NA['U'] = NA['u'] = 'T';
     }
 
     bool nextAlignment() {
@@ -81,7 +93,6 @@ public:
         }
         if (formatNA) return toFormatNA(bufferSeq);
         if (formatAmbiguity) return toAmbiguity(bufferSeq);
-        if (formatAA2NA) return toFormatAA2NA(bufferSeq);
         return bufferSeq;
     }
 
@@ -106,11 +117,13 @@ private:
         return res;
     }
 
-    static string removeSpace(const string& seq) {
-        string res;
-        for (char c : seq) {
-            if (c != ' ' && c != '\t' && c != '\r') res += c;
+    static string removeSpace(string& seq) {
+        string res = std::move(seq);
+        size_t i = 0;
+        for (char c : res) {
+            if (c != ' ' && c != '\t' && c != '\r') res[i++] = c;
         }
+        res.resize(i);
         return res;
     }
 
@@ -168,6 +181,7 @@ private:
             }
             bufferSeq += removeSpace(line);
         }
+
         return true;
     }
 
@@ -210,17 +224,9 @@ private:
         return true;
     }
 
-    string toFormatNA(const string& seq) {
-        string res;
-        for (char c : seq) {
-            switch (c) {
-            case 'A': case 'a': res += 'A'; break;
-            case 'C': case 'c': res += 'C'; break;
-            case 'G': case 'g': res += 'G'; break;
-            case 'T': case 't': case 'U': case 'u': res += 'T'; break;
-            default: res += '-';
-            }
-        }
+    string toFormatNA(string& seq) {  
+        string res = std::move(seq);
+        for (char &c : res) c = NA[(unsigned char) c];
         return res;
     }
 
@@ -246,20 +252,6 @@ private:
                 case 'T': case 't': case 'U': case 'u': case 'W': case 'w': case 'Y': case 'y': case 'K': case 'k': res += 'T'; break;
                 default: res += '-';
                 }
-            }
-        }
-        return res;
-    }
-
-    string toFormatAA2NA(const string& seq) {
-        string res;
-        for (char c : seq) {
-            switch (c) {
-            case 'C': case 'c': case 'M': case 'm': case 'I': case 'i': case 'L': case 'l': case 'V': case 'v': res += 'A'; break;
-            case 'D': case 'd': case 'E': case 'e': case 'Q': case 'q': case 'N': case 'n': case 'H': case 'h': case 'R': case 'r': case 'K': case 'k': res += 'T'; break;
-            case 'S': case 's': case 'T': case 't': case 'A': case 'a': case 'G': case 'g': case 'P': case 'p': res += 'C'; break;
-            case 'W': case 'w': case 'Y': case 'y': case 'F': case 'f': res += 'G'; break;
-            default: res += '-';
             }
         }
         return res;

@@ -527,9 +527,13 @@ public:
 		}
 	}
 
+	string getRealName(string const& name) const noexcept {
+		return realName.contains(name) ? realName.at(name) : name;
+	}
+
 	size_t operator[](string const& name) {
 		parseMap();
-		string real_name = realName.contains(name) ? realName.at(name) : name;
+		string real_name = getRealName(name);
 		if (!name2id.contains(real_name)) {
 			name2id[real_name] = names.size();
 			names.push_back(real_name);
