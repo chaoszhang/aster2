@@ -15,11 +15,13 @@ using namespace std::string_literals;
 
 ChangeLog logmain("main",
 	"2026-02-01", "Chao Zhang", "Change default -r -s --subsample-min", "patch",
-	"2026-02-08", "Chao Zhang", "Add --root option", "patch");
+	"2026-02-08", "Chao Zhang", "Add --root option", "patch",
+	"2026-02-13", "Chao Zhang", "Add time in logs", "patch");
 
 int main(int argc, char* argv[]) {
 	using std::string;
 	using std::size_t;
+	using Clock = std::chrono::high_resolution_clock;
 
 	std::pair<string, string> programNames = my_tool::Driver::programNames();
 	ARG.set("SHORT_NAME", programNames.first); 
@@ -46,10 +48,12 @@ int main(int argc, char* argv[]) {
 	ARG.print();
 
 	if (ARG.has("root")) common::taxonName2ID[ARG.get<string>("root")];
+	
+	auto start = Clock::now();
 
 	ARG.log() << "Parsing input file(s)..." << endl;
 
-	std::visit([]<typename StepwiseColorSharedConstData>(StepwiseColorSharedConstData const& stepwiseColorSharedConstData){
+	std::visit([&start]<typename StepwiseColorSharedConstData>(StepwiseColorSharedConstData const& stepwiseColorSharedConstData){
 		size_t nTaxa = common::taxonName2ID.nTaxa();
 		size_t nThreads = ARG.get<size_t>("thread");
 		size_t nRounds = ARG.get<size_t>("initial-round");
@@ -61,6 +65,8 @@ int main(int argc, char* argv[]) {
 		ARG.log() << "#Initial-rounds: " << nRounds << endl;
 		ARG.log() << "#Subsequent-rounds: " << nSubsequent << endl;
 
+		ARG.log() << "Time after parsing input: " << (std::chrono::duration_cast<std::chrono::minutes>(Clock::now() - start)).count() << " minute(s)" << std::endl;
+
 		using Color = typename StepwiseColorSharedConstData::ParentClass;
 
 		using Alg = optimization_algorithm::Procedure<optimization_algorithm::DefaultProcedureAttributes<Color> >;
@@ -70,8 +76,12 @@ int main(int argc, char* argv[]) {
 
 		tree.displaySimpleNewick(ARG.log() << "Final tree: ") << endl;
 
+		ARG.log() << "Time after optimization: " << (std::chrono::duration_cast<std::chrono::minutes>(Clock::now() - start)).count() << " minute(s)" << std::endl;
+
 		using SupportAlg = quadripartition_support::Procedure<quadripartition_support::ProcedureAttributes<Color> >;
 		SupportAlg::annotate({}, stepwiseColorSharedConstData, tree, nThreads, 0);
+
+		ARG.log() << "Time after support annotation: " << (std::chrono::duration_cast<std::chrono::minutes>(Clock::now() - start)).count() << " minute(s)" << std::endl;
 
 		if (ARG.has("output")) {
 			std::ofstream fout(ARG.get<string>("output"));
