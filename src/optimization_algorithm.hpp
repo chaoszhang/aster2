@@ -198,6 +198,9 @@ template<COLORABLE C> struct DefaultProcedureAttributes {
 	using Random = common::Random<std::mt19937_64>;
 };
 
+ChangeLog logProcedure("optimization_algorithm::Procedure",
+	"2026-02-13", "Chao Zhang", "Switch to sequential subsample", "patch");
+
 template<typename Attributes> class Procedure {
 public:
 	using Log = LogInfo;
@@ -335,6 +338,13 @@ public:
 	using Parallel_TP_RP = Parallel_X<TP_RP>;
 	using Parallel_TSP = Parallel_X<TSP>;
 
+	static typename TP_RP::Prereq prereq_TP_RP(Random& random, size_t nThreads, size_t iElementBegin, size_t iElementEnd, size_t nTaxa, int verbose) {
+		typename RP::Prereq rp(verbose, random.randomTaxonOrder(nTaxa));
+		typename TP::Prereq tp(verbose + 1, nThreads, iElementBegin, iElementEnd);
+		typename TP_RP::Prereq p(rp, tp);
+		return p;
+	}
+
 	static typename Parallel_TP_RP::Prereq prereq_Parallel_TP_RP(Random &random, size_t nThreads, size_t iTotalElementBegin, size_t iTotalElementEnd, size_t nParallel, size_t nTaxa, int verbose) {
 		vector<typename TP_RP::Prereq> jobs;
 		size_t nElements = iTotalElementEnd - iTotalElementBegin;
@@ -352,6 +362,11 @@ public:
 		return p;
 	}
 
+	static typename TSP::Prereq prereq_TSP(Random& random, size_t nThreads, size_t iElementBegin, size_t iElementEnd, size_t nTaxa, int verbose) {
+		typename TSP::Prereq p(verbose, nThreads, iElementBegin, iElementEnd, random.randomTaxonOrder(nTaxa));
+		return p;
+	}
+
 	static typename Parallel_TSP::Prereq prereq_Parallel_TSP(Random& random, size_t nThreads, size_t iTotalElementBegin, size_t iTotalElementEnd, size_t nParallel, size_t nTaxa, int verbose) {
 		vector<typename TSP::Prereq> jobs;
 		size_t nElements = iTotalElementEnd - iTotalElementBegin;
@@ -361,8 +376,8 @@ public:
 			size_t iElementBegin = iParallel * nElements / nParallel + iTotalElementBegin;
 			size_t iElementEnd = (iParallel + 1) * nElements / nParallel + iTotalElementBegin;
 
-			typename TSP::Prereq tp(verbose + 1, iThreadEnd - iThreadBegin, iElementBegin, iElementEnd, random.randomTaxonOrder(nTaxa));
-			jobs.emplace_back(tp);
+			typename TSP::Prereq tsp(verbose + 1, iThreadEnd - iThreadBegin, iElementBegin, iElementEnd, random.randomTaxonOrder(nTaxa));
+			jobs.emplace_back(tsp);
 		}
 		typename Parallel_TSP::Prereq p(verbose, jobs);
 		return p;
@@ -534,7 +549,6 @@ public:
 			size_t nBatches = iTreeEnd - iTreeBegin;
 			size_t nPartitions = (nBatches + nThreads - 1) / nThreads;
 			// cerr << "nPartitions = " << nPartitions << endl;
-			int newVerbose = (nBatches > 1) ? verbose + 1 : verbose;
 			for (size_t iPartition : std::views::iota((size_t)0, nPartitions)) {
 				size_t iElementBegin = iPartition * nElements / nPartitions;
 				size_t iElementEnd = (iPartition + 1) * nElements / nPartitions;
@@ -579,8 +593,67 @@ public:
 		return tree4;
 	}
 
+	static Tree subsampleProcedure2(ConstrainedDP& cdp, Random& random, Color& color, Data const& data, size_t nTaxa, size_t nTrees, size_t nThreads, int verbose) {
+		// Log::setShowThread();
+		Log log(verbose), vlog(verbose + 1);
+		log.log() << "Running subsample procedure..." << endl;
+		vlog.log() << "#Rounds: " << nTrees << endl;
+		vlog.log() << "#Threads: " << nThreads << endl;
+		size_t minElements = ARG.get<size_t>("subsample-min");
+		size_t nElements = data.nElements;
+
+		size_t _nPartitions = 1;
+		while (_nPartitions <= nTrees && nElements / (_nPartitions + 1) >= minElements) _nPartitions++;
+		size_t nRuns = (nTrees + _nPartitions - 1) / _nPartitions;
+		// cerr << "nRuns = " << nRuns << endl;
+		for (size_t iRun : std::views::iota((size_t)0, nRuns)) {
+			size_t iTreeBegin = iRun * nTrees / nRuns;
+			size_t iTreeEnd = (iRun + 1) * nTrees / nRuns;
+			size_t nPartitions = iTreeEnd - iTreeBegin;
+			for (size_t iPartition : std::views::iota((size_t)0, nPartitions)) {
+				size_t iElementBegin = iPartition * nElements / nPartitions;
+				size_t iElementEnd = (iPartition + 1) * nElements / nPartitions;
+				//cerr << "iElementBegin = " << iElementBegin << endl;
+				//cerr << "iElementEnd = " << iElementEnd << endl;
+				Tree tree;
+				if (ARG.has("no-two-step") || nTaxa < 200) {
+					typename TP_RP::Prereq p = prereq_TP_RP(random, nThreads, iElementBegin, iElementEnd, nTaxa, verbose + 1);
+					TP_RP job(p);
+					tree = job(color);
+				}
+				else {
+					typename TSP::Prereq p = prereq_TSP(random, nThreads, iElementBegin, iElementEnd, nTaxa, verbose + 1);
+					TSP job(p);
+					tree = job(color);
+				}
+				typename TP_ST::Prereq tp_stp = prereq_TP_ST(nThreads, 0, data.nElements, verbose + 1);
+				typename TP3_NNI::Prereq tp3_nnip = prereq_TP3_NNI(nThreads, 0, data.nElements, verbose + 1);
+				TP_ST tp_st(tp_stp);
+				Tree tree2 = tp_st(color, tree);
+				cdp.addTree(tree2);
+				TP3_NNI tp3_nni(tp3_nnip);
+				Tree tree3 = tp3_nni(color, tree2);
+				TP_ST tp_st2(tp_stp);
+				Tree tree4 = tp_st2(color, tree3);
+				cdp.addTree(tree4);
+			}
+		}
+		{
+			Tree tree = cdp.optimalUnrootedTree(ZERO);
+			typename TP_ST::Prereq tp_stp = prereq_TP_ST(nThreads, 0, data.nElements, verbose);
+			TP_ST tp_st(tp_stp);
+			Tree tree2 = tp_st(color, tree);
+			typename TP3_NNI::Prereq tp3_nnip = prereq_TP3_NNI(nThreads, 0, data.nElements, verbose);
+			TP3_NNI tp3_nni(tp3_nnip);
+			Tree tree3 = tp3_nni(color, tree2);
+			TP_ST tp_st2(tp_stp);
+			Tree tree4 = tp_st2(color, tree2);
+			return tree4;
+		}
+	}
+
 	static Tree defaultProcedure(ConstrainedDP& cdp, Random& random, Color& color, Data const& data, size_t nTaxa, size_t nTrees, size_t nThreads, int verbose) {
-		return subsampleProcedure(cdp, random, color, data, nTaxa, nTrees, nThreads, verbose);
+		return subsampleProcedure2(cdp, random, color, data, nTaxa, nTrees, nThreads, verbose);
 	}
 
 	static Tree heuristSearch(Data const& data, size_t nTaxa, size_t r, size_t s, size_t nThreads, int verbose, Tree f(ConstrainedDP&, Random&, Color&, Data const&, size_t, size_t, size_t, int)) {

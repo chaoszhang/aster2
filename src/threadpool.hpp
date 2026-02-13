@@ -28,27 +28,6 @@ template<NonVoid score_t, std::ranges::range Range> struct Task{
 		instr(instr), elementRange(elementRange){}
 	
 	vector<score_t> operator()() const noexcept{
-		/*
-		vector<score_t> res;
-		size_t iReduce = 0;
-		for (size_t iMap : iota((size_t) 0, instr->mapFuncs.size())){
-			auto map = instr->mapFuncs[iMap];
-			if (std::holds_alternative<std::function<void(size_t)> >(map)){
-				for (size_t iElement: elementRange){
-					std::get<std::function<void(size_t)> >(map)(iElement);
-				}
-			}
-			else{
-				auto reduce = instr->reduceFuncs[iReduce];
-				score_t temp = instr->zeros[iReduce];
-				for (size_t iElement: elementRange){
-					temp = reduce(temp, std::get<std::function<score_t(size_t)> >(map)(iElement));
-				}
-				res.push_back(temp);
-				iReduce++;
-			}
-		}
-		*/
 		vector<score_t> res = instr->zeros;
 		for (size_t iElement : elementRange) {
 			size_t iReduce = 0;
@@ -63,7 +42,6 @@ template<NonVoid score_t, std::ranges::range Range> struct Task{
 				}
 			}
 		}
-		
 		return res;
 	}
 };
