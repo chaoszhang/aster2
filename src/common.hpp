@@ -271,7 +271,8 @@ public:
 
 ChangeLog logInputParser("InputParser",
 "2026-02-01", "Chao Zhang", "Display date of latest update", "patch",
-"2026-02-01", "Chao Zhang", "Exit in name conflict and ensure shortcut format", "patch");
+"2026-02-01", "Chao Zhang", "Exit in name conflict and ensure shortcut format", "patch",
+"2026-02-24", "Chao Zhang", "Add printing documentation function", "patch");
 
 class InputParser : public Attributes {
 	struct Argument {
@@ -317,6 +318,10 @@ class InputParser : public Attributes {
 			char shortcut = arg[1];
 			if (shortcut == 'h') {
 				displayHelp(std::cout);
+				exit(0);
+			}
+			if (shortcut == 'H') {
+				std::cout << get<string>("DOCUMENTATION") << std::endl;
 				exit(0);
 			}
 			if (!shortcutToArgument.contains(shortcut)) {
@@ -913,6 +918,7 @@ public:
 	}
 };
 
+#include "documentation.hpp"
 };
 
 using common::ChangeLog;

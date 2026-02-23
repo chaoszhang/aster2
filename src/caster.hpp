@@ -10,6 +10,7 @@ using std::size_t;
 using std::views::iota;
 using std::vector;
 using std::array;
+using std::string;
 	
 namespace DriverHelper {
 	template<typename DataClasses> DataClasses read();
@@ -377,6 +378,146 @@ public:
 		try { return DriverHelper::read<std::variant_alternative_t<3, DataClasses> >(); } catch (...) {}
 		return DriverHelper::read<std::variant_alternative_t<4, DataClasses> >();
 	}
+};
+
+class Documentation : public common::DocumentationBase {
+protected:
+	string introduction() const noexcept override {
+		return R"YOHANETYO(# Coalescence-aware Alignment-based Species Tree EstimatoR (CASTER)
+
+[<img src="../misc/CASTER.png" width="500"/>](../misc/CASTER.png)
+
+Genome-wide data have the promise of dramatically improving phylogenetic inferences. Yet, inferring the true phylogeny remains a challenge, mainly because the evolutionary histories of different genomic regions differ. The traditional concatenation approach ignores such differences, resulting in both theoretical and empirical shortcomings. In response, many discordance-aware inference methods have been developed. Yet, all have their own weaknesses. Many methods rely on short recombination-free genomic segments to build gene trees and thus suffer from a lack of signals for gene tree reconstruction, resulting in poor species tree. Some methods wrongly assume that the rate of evolution is uniform across the species tree. Yet, others lack enough scalability to analyze phylogenomic data.
+
+We introduce a new site-based species tree inference method that seeks to address these challenges without reconstructing gene trees. Our method, called CASTER (Coalescence-aware Alignment-based Species Tree EstimatoR), has two flavors: CASTER-site and CASTER-pair. The first is based on patterns in individual sites and the second is based on pairs of sites.
+
+CASTER has several outstanding features:
+1. CASTER introduces two new optimization objectives based on genomic site patterns of four species; we show that optimizing these objectives produces two estimators: CASTER-site is statistically consistent under MSC+F84 model while allowing mutation rate to change across sites and across species tree branches; CASTER-pair is statistically consistent under MSC+LM model under further assumptions.
+2. CASTER comes with a scalable algorithm to optimize the objectives summed over all species quartets. Remarkably, its time complexity is linear to the number of sites and at most quasi-quadratic with respect to the number of species.
+3. CASTER can handle multiple samples per species, and CASTER-site specifically can work with allele frequencies of unphased multiploid.
+4. CASTER is extremenly memory efficent, requiring <1 byte per SNP per sample
+
+Under extensive simulation of genome-wide data, including recombination, we show that both CASTER-site and CASTER-pair out-perform concatenation using RAxML-ng, as well as discordance-aware methods SVDQuartets and wASTRAL in terms of both accuracy and running time. Noticeably, CASTER-site is 60¨C150X fASTER2 than the alternative methods. It reconstructs an Avian tree of 51 species from aligned genomes with 254 million SNPs in only 3.5 hours on an 8-core desktop machine with 32 GB memory. It can also reconstruct a species tree of 201 species with approximately 2 billion SNPs using a server of 256 GB memory.
+
+Our results suggest that CASTER-site and CASTER-pair can fulfill the need for large-scale phylogenomic inferences.
+
+## Publication
+
+Chao Zhang, Rasmus Nielsen, Siavash Mirarab, CASTER: Direct species tree inference from whole-genome alignments. Science (2025) https://www.science.org/doi/10.1126/science.adk9688
+
+## Notice
+
+Since CASTER-site and CASTER-pair assume different models, please run both and choose the result that makes more sense if you can.
+)YOHANETYO";
+	}
+
+	string input() const noexcept override {
+		return R"YOHANETYO(# STOP!
+Please make sure you removed paralogous alignment regions using `RepeatMasker` or alike. This will improve the accuracy of CASTER on biological datasets!
+
+# INPUT
+* The input is recommended to be a single Phylip file or vertically concatenated Phylip files in one file.
+* The input can also be a single MSA in Fasta format.
+* The input can also be a text file containing a list of Fasta files (one file per line).
+* The input file(s) can have missing taxa and multiple speciesmen/copies per taxon.
+
+Examples:
+
+Single Phylip file:
+```
+4 3
+taxon_A AAA
+taxon_C CCC
+taxon_G GGG
+taxon_T TTT
+```
+
+Multiple Phylip files concatenated, multiploid (if using `CASTER-pair`, genes must be phased; if using `CASTER-site`, you can arbitrarily phase them):
+```
+6 3
+taxon_A AAA
+taxon_A AAA
+taxon_A AAA
+taxon_A AAA
+taxon_C CCC
+taxon_C CCC
+4 2
+taxon_A AA
+taxon_A AA
+taxon_T TT
+taxon_T TT
+```
+
+Single Fasta file, multiple speciesmen:
+```
+>taxon_A
+AAA
+>taxon_A
+ACA
+>taxon_C
+CCC
+>taxon_G
+GGG
+>taxon_T
+TTT
+```
+Mapping file:
+```
+alias_A1 taxon_A
+alias_A2 taxon_A
+```
+
+Multiple Fasta file:
+```
+gene1.fasta
+gene2.fasta
+```
+In `gene1.fasta`:
+```
+>taxon_A
+AAA
+>taxon_C
+CCC
+>taxon_G
+GGG
+>taxon_T
+TTT
+```
+In `gene2.fasta` (order can change, fasta files can have missing taxa):
+```
+>taxon_C
+CC
+>taxon_A
+AA
+>taxon_T
+TT
+```
+
+Notice: only `CASTER-site` works on unphased SNPs, you can translate VCF files into Fasta (or Phylip) in the following way.
+
+VCF:
+```
+taxon_A
+A/A/C/T
+A/A/G/G
+```
+Fasta (order and phasing do not matter):
+```
+>taxon_A
+AA
+>taxon_A
+AA
+>taxon_A
+CG
+>taxon_A
+TG
+```
+)YOHANETYO";
+	}
+
+	string programName() const noexcept override { return "caster"; }
+
+	string exampleInput() const noexcept override { return "genetrees.tre_1.fas"; }
 };
 
 };

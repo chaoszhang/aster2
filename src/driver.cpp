@@ -24,8 +24,10 @@ int main(int argc, char* argv[]) {
 	using Clock = std::chrono::high_resolution_clock;
 
 	std::pair<string, string> programNames = my_tool::Driver::programNames();
+	my_tool::Documentation documentation;
 	ARG.set("SHORT_NAME", programNames.first); 
 	ARG.set("FULL_NAME", programNames.second);
+	ARG.set("DOCUMENTATION", documentation());
 
 	ARG.addArgument('h', "help", "flag", "Display help message", 6, true);
 	ARG.addArgument('i', "input", "string", "Input file path", 5);
