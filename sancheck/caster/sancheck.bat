@@ -1,0 +1,1 @@
+exe\caster-site.exe -i example\alignment.phylip

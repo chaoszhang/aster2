@@ -1,0 +1,3 @@
+example/gene1.fasta
+example/gene2.fasta
+example/gene3.fasta

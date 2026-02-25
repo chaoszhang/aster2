@@ -517,7 +517,7 @@ TG
 
 	string programName() const noexcept override { return "caster"; }
 
-	string exampleInput() const noexcept override { return "genetrees.tre_1.fas"; }
+	string exampleInput() const noexcept override { return "alignment.phylip"; }
 };
 
 };

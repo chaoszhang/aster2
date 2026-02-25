@@ -1,0 +1,1 @@
+bin/caster -i example/alignment.phylip
