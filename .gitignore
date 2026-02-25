@@ -5,4 +5,5 @@ src/log.txt
 src/makefile
 src/test
 bin/
+doc/
 log.txt

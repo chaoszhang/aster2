@@ -1,0 +1,31 @@
+name: C/C++ CI development branch sancheck
+
+on:
+  push:
+    branches: [ "dev" ]
+  pull_request: 
+    branches: [ "dev" ]
+
+jobs: 
+  sancheck-and-doc:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+          token: ${{ secrets.MY_GITHUB_ACTION_TOKEN }}
+    - name: make
+      run: make doc
+    - name: sancheck
+      run: for c in sancheck/*/sancheck.bash; do bash $c; done
+    - name: commit
+      run: |
+            git config --local user.email "github-actions[bot]@github.com"
+            git config --local user.name "github-actions[bot]"
+            git add tutorial/*
+            git commit -m "update doc"
+    - name: push
+      uses: chaoszhang/github-push-action@master
+      with: 
+          github_token: ${{ secrets.MY_GITHUB_ACTION_TOKEN }}
+          branch: main
+          force: true
