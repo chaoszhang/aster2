@@ -93,7 +93,7 @@ bin/{0} -i example/{1} -o example/{1}.stree
 
 When using a mapping file, add `-a MAPPING_FILE`:
 ```
-bin/{0} -i INPUT_FILE -o OUTPUT_FILE 
+bin/{0} -a MAPPING_FILE -i INPUT_FILE -o OUTPUT_FILE 
 ```
 
 ASTER2 supports multi-threading. To run program with 4 threads, add `-t 4`:
