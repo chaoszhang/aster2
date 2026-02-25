@@ -71,7 +71,7 @@ public:
 		size_t minorVersion = 0, patchVersion = 0;
 		for (const Change& change : changes) {
 			if (change.date > lastDate) {
-				blocks.push_back(version + updates);
+				blocks.push_back(version + updates + "\n"s);
 				version = ""s;
 				updates = " - "s + change.date + ":\n"s;
 				lastDate = change.date;
@@ -93,7 +93,7 @@ public:
 			if (isGlobal) updates += change.code + ": "s;
 			updates += change.author + " - "s + change.description + "\n"s;
 		}
-		blocks.push_back(version + updates);
+		blocks.push_back(version + updates + "\n"s);
 		if (isGlobal) {
 			shared.globalVersion = (blocks.size() > 1) ? version : "v2.0.0";
 			shared.lastDate = lastDate;
@@ -119,7 +119,8 @@ ChangeLog::Shared ChangeLog::shared;
 
 ChangeLog logChangeLog("ChangeLog",
 "2026-02-01", "Chao Zhang", "Save date of last update", "patch",
-"2026-02-02", "Chao Zhang", "Make helper function to constructor", "patch");
+"2026-02-02", "Chao Zhang", "Make helper function to constructor", "patch",
+"2026-02-25", "Chao Zhang", "Fix formating", "patch");
 
 class LogInfo {
 	struct Shared {
