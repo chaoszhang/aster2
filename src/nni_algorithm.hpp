@@ -68,7 +68,8 @@ template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE SC> struct Stepw
 
 ChangeLog logStepwiseColorQuadripartitionScore("StepwiseColorQuadripartitionScore",
 	"2026-02-02", "Chao Zhang", "Initial code", "minor",
-	"2026-02-04", "Chao Zhang", "Fix interface for computing support", "patch");
+	"2026-02-04", "Chao Zhang", "Fix interface for computing support", "patch",
+	"2026-02-26", "Chao Zhang", "Supporting elementClearAndSetTaxonColor & setQuadripartitionMode", "patch");
 
 template<STEPWISE_COLOR_QUADRIPARTITION_SCORE_ATTRIBUTES Attributes> class StepwiseColorQuadripartitionScore : public common::LogInfo {
 public:
@@ -106,8 +107,13 @@ protected:
 		Color& localStepwiseColor = stepwiseColor;
 		instr.mapFuncs.emplace_back([leaves, iColor, jColor, &localStepwiseColor](size_t iElement) noexcept {
 			for (size_t iTaxon : leaves) {
-				localStepwiseColor.elementClearTaxonColor(iElement, iTaxon, iColor);
-				localStepwiseColor.elementSetTaxonColor(iElement, iTaxon, jColor);
+				if constexpr (stepwise_colorable::ELEMENT_CLEAR_AND_SET_TAXON_COLOR<Color>) {
+					localStepwiseColor.elementClearAndSetTaxonColor(iElement, iTaxon, iColor, jColor);
+				}
+				else {
+					localStepwiseColor.elementClearTaxonColor(iElement, iTaxon, iColor);
+					localStepwiseColor.elementSetTaxonColor(iElement, iTaxon, jColor);
+				}
 			}
 		});
 	}
@@ -272,6 +278,8 @@ protected:
 	}
 
 	template<bool NNI> void colorTree(void annotator(Tree::Node*, score_t, score_t, score_t), score_t EPSILON = ZERO) noexcept {
+		if constexpr (stepwise_colorable::SET_QUADRIPARTITION_MODE<Color>) stepwiseColor.setQuadripartitionMode(true);
+		
 		vector<size_t> leaves;
 		for (auto const& e : leafId) leaves.push_back(e.second);
 		setColor(leaves, 0);
@@ -280,6 +288,8 @@ protected:
 		clearColor(leaves, 2);
 		runCachedInstructions();
 		if constexpr (!NNI) colorSubtree<false, true>(tree.root(), annotator, EPSILON);
+
+		if constexpr (stepwise_colorable::SET_QUADRIPARTITION_MODE<Color>) stepwiseColor.setQuadripartitionMode(false);
 	}
 
 	static void dummyAnnotator(Tree::Node*, score_t, score_t, score_t) noexcept {}

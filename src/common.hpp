@@ -13,6 +13,12 @@ using std::unordered_map;
 using std::unique_ptr;
 using namespace std::string_literals;
 
+template<bool CONDITION, template<typename> typename Template, typename Type, typename ElseType> struct InstantiateIfElseHelper;
+template<template<typename> typename Template, typename Type, typename ElseType> struct InstantiateIfElseHelper<true, Template, Type, ElseType> { using RealType = Template<Type>; };
+template<template<typename> typename Template, typename Type, typename ElseType> struct InstantiateIfElseHelper<false, Template, Type, ElseType> { using RealType = ElseType; };
+template<bool CONDITION, template<typename> typename Template, typename Type, typename ElseType> using InstantiateIfElse = typename InstantiateIfElseHelper<CONDITION, Template, Type, ElseType>::RealType;
+template<bool CONDITION, template<typename> typename Template, typename Type> using InstantiateIf = InstantiateIfElse<CONDITION, Template, Type, void>;
+
 string const BUG_REPORT = "Please file a bug report (github.com/chaoszhang/aster2/issues, chaozhang@pku.edu.cn, aster-users@googlegroups.com, or QQ group 130635706) with your log file (log.txt by default) attached! Many thanks!";
 
 class ChangeLog {

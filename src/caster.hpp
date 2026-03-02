@@ -47,7 +47,7 @@ template<STEPWISE_COLOR_ATTRIBUTES Attributes> class Color{
 
 public:
 	using score_t = Attributes::score_t;
-	static inline score_t constexpr IS_ROOTED = false;
+	static inline bool constexpr IS_ROOTED = false;
 	static inline score_t constexpr ZERO = Attributes::ZERO;
 	static inline score_t constexpr EPSILON = Attributes::EPSILON;
 	
@@ -67,17 +67,17 @@ public:
 		};
 
 		vector<Element> elements;
-
-		size_t nElements = 0;
 		index_t nGenomePos = 0;
+
+		size_t nElements() const noexcept { return elements.size(); }
     };
 
 private:
-	SharedConstData const* const sharedConstData;
+	SharedConstData const& sharedConstData;
     vector<array<array<cnt_t, 4>, 4> > colorCnts; // colorCnts[iGenomePos][iColor][iNucleotide] -> count
 
 	template<bool isSet> inline void elementSetOrClearTaxonColor(size_t iElement, size_t iTaxon, size_t iColor) noexcept{
-		typename SharedConstData::Element const& element = sharedConstData->elements[iElement];
+		typename SharedConstData::Element const& element = sharedConstData.elements[iElement];
 		if (!element.hasTaxon(iTaxon)) return;
 		index_t iRow = element.taxon2row[iTaxon];
 		for (index_t iPos : iota((index_t)0, element.nPos)){
@@ -179,9 +179,9 @@ public:
 	}
 	
 	score_t elementScore(size_t iElement) const noexcept{
-		index_t iGenomePosBegin = sharedConstData->elements[iElement].iGenomePosBegin;
-		index_t nPos = sharedConstData->elements[iElement].nPos;
-		typename SharedConstData::Element const& element = sharedConstData->elements[iElement];
+		index_t iGenomePosBegin = sharedConstData.elements[iElement].iGenomePosBegin;
+		index_t nPos = sharedConstData.elements[iElement].nPos;
+		typename SharedConstData::Element const& element = sharedConstData.elements[iElement];
 
 		score_t res = 0;
 		for (index_t iPos : iota((index_t)0, nPos)){
@@ -191,9 +191,9 @@ public:
 	}
 
 	array<score_t, 3> elementQuadripartitionScores(size_t iElement) const noexcept {
-		index_t iGenomePosBegin = sharedConstData->elements[iElement].iGenomePosBegin;
-		index_t nPos = sharedConstData->elements[iElement].nPos;
-		typename SharedConstData::Element const& element = sharedConstData->elements[iElement];
+		index_t iGenomePosBegin = sharedConstData.elements[iElement].iGenomePosBegin;
+		index_t nPos = sharedConstData.elements[iElement].nPos;
+		typename SharedConstData::Element const& element = sharedConstData.elements[iElement];
 
 		array<score_t, 3> res = {0, 0, 0};
 		for (index_t iPos : iota((index_t)0, nPos)) {
@@ -202,8 +202,8 @@ public:
 		}
 		return res;
 	}
-	
-	Color(SharedConstData const* const data) noexcept: sharedConstData(data), colorCnts(data->nGenomePos){}
+
+	Color(SharedConstData const& data) noexcept : sharedConstData(data), colorCnts(data.nGenomePos) {}
 
 	template<typename DataClasses> friend DataClasses DriverHelper::read();
 };
@@ -213,142 +213,141 @@ ChangeLog logDriverHelper("DriverHelper",
 
 namespace DriverHelper {
 
-	using namespace std;
+using namespace std;
 
-	template<typename T, typename T2> array<T, 4>& operator+=(array<T, 4>& a, const array<T2, 4>& b) {
-		for (int j = 0; j < 4; j++) {
-			a[j] += b[j];
-		}
-		return a;
+template<typename T, typename T2> array<T, 4>& operator+=(array<T, 4>& a, const array<T2, 4>& b) {
+	for (int j = 0; j < 4; j++) {
+		a[j] += b[j];
 	}
+	return a;
+}
 
-	template<typename T> T sum(const array<T, 4>& cnt) {
-		T result = 0;
-		for (int j = 0; j < 4; j++) {
-			result += cnt[j];
-		}
-		return result;
+template<typename T> T sum(const array<T, 4>& cnt) {
+	T result = 0;
+	for (int j = 0; j < 4; j++) {
+		result += cnt[j];
 	}
+	return result;
+}
 
-	template<typename DataClass> DataClass read() {
-		using cnt_taxon_t = DataClass::ParentClass::cnt_taxon_t;
-		using cnt_t = DataClass::ParentClass::cnt_t;
+template<typename DataClass> DataClass read() {
+	using cnt_taxon_t = DataClass::ParentClass::cnt_taxon_t;
+	using cnt_t = DataClass::ParentClass::cnt_t;
 
-		common::LogInfo log(1);
-		log.log() << "Try if this data structure works..." << std::endl;
-		DataClass sharedConstData;
+	common::LogInfo log(1);
+	log.log() << "Try if this data structure works..." << std::endl;
+	DataClass sharedConstData;
 
-		const string& file = ARG.get<string>("input");
-		aligment_utilities::AlignmentParser AP(file, 2), AP2(file, 3);
-		while (AP.nextAlignment()) {
-			size_t nSites = AP.getLength();
-			size_t chunkMaxSize = ARG.get<size_t>("chunk");
-			size_t nChunk = (nSites + chunkMaxSize - 1) / chunkMaxSize;
-			vector<vector<size_t> > sites(nChunk);
-			vector<array<double, 4> > eqfreq;
-			size_t iElementBegin = sharedConstData.elements.size();
-			unordered_map<size_t, size_t> taxon2row;
+	const string& file = ARG.get<string>("input");
+	aligment_utilities::AlignmentParser AP(file, 2), AP2(file, 3);
+	while (AP.nextAlignment()) {
+		size_t nSites = AP.getLength();
+		size_t chunkMaxSize = ARG.get<size_t>("chunk");
+		size_t nChunk = (nSites + chunkMaxSize - 1) / chunkMaxSize;
+		vector<vector<size_t> > sites(nChunk);
+		vector<array<double, 4> > eqfreq;
+		size_t iElementBegin = sharedConstData.elements.size();
+		unordered_map<size_t, size_t> taxon2row;
 			
-			{
-				size_t nTotalSpeciesmen = 0;
-				unordered_map<size_t, size_t> nSpeciesmen;
-				vector<array<unsigned short, 4> > freq;
-				freq.resize(AP.getLength());
-				while (AP.nextSeq()) {
-					size_t iTaxon = common::taxonName2ID[AP.getName()];
-					nTotalSpeciesmen++;
-					nSpeciesmen[iTaxon]++;
+		{
+			size_t nTotalSpeciesmen = 0;
+			unordered_map<size_t, size_t> nSpeciesmen;
+			vector<array<unsigned short, 4> > freq;
+			freq.resize(AP.getLength());
+			while (AP.nextSeq()) {
+				size_t iTaxon = common::taxonName2ID[AP.getName()];
+				nTotalSpeciesmen++;
+				nSpeciesmen[iTaxon]++;
 
-					if (!taxon2row.count(iTaxon)) taxon2row[iTaxon] = taxon2row.size();
-					string seq = AP.getSeq();
-					for (size_t i = 0; i < seq.size(); i++) {
-						switch (seq[i]) {
-							case 'A': freq[i][0]++; break;
-							case 'C': freq[i][1]++; break;
-							case 'G': freq[i][2]++; break;
-							case 'T': freq[i][3]++; break;
-						}
+				if (!taxon2row.count(iTaxon)) taxon2row[iTaxon] = taxon2row.size();
+				string seq = AP.getSeq();
+				for (size_t i = 0; i < seq.size(); i++) {
+					switch (seq[i]) {
+						case 'A': freq[i][0]++; break;
+						case 'C': freq[i][1]++; break;
+						case 'G': freq[i][2]++; break;
+						case 'T': freq[i][3]++; break;
 					}
-				}
-
-				size_t maxSpeciesman = 0;
-				for (auto const& element : nSpeciesmen) {
-					maxSpeciesman = std::max(maxSpeciesman, element.second);
-				}
-
-				if (std::same_as<cnt_taxon_t, bool> && maxSpeciesman >= 2) {
-					log.log() << "Seems there is more than one haploid genome per taxon and thus bool type cannot be used..." << std::endl;
-					throw(std::logic_error("Incompatible data structure"));
-				}
-				if (std::same_as<cnt_taxon_t, unsigned char> && maxSpeciesman >= 256) {
-					log.log() << "Seems there are more than 255 haploid genomes per taxon (which is fishy) and thus unsigned char type cannot be used..." << std::endl;
-					throw(std::logic_error("Incompatible data structure"));
-				}
-				if (std::same_as<cnt_taxon_t, unsigned short> && maxSpeciesman >= 65536) {
-					common::LogInfo err(-100);
-					err.log() << "Seems there are more than 65535 haploid genomes per taxon (which is astonishing)! Please ask the author for a specially made version..." << std::endl;
-					exit(-1);
-				}
-				if (std::same_as<cnt_t, unsigned char> && nTotalSpeciesmen >= 256) {
-					log.log() << "Seems there are more than 255 haploid genomes in total and thus unsigned char type cannot be used..." << std::endl;
-					throw(std::logic_error("Incompatible data structure"));
-				}
-				if (std::same_as<cnt_t, unsigned short> && nTotalSpeciesmen >= 65536) {
-					common::LogInfo err(-100);
-					err.log() << "Seems there are more than 65535 haploid genomes in total (which is fishy)! Please ask the author for a specially made version..." << std::endl;
-					exit(-1);
-				}
-
-				for (size_t i = 0; i < nChunk; i++) {
-					size_t s = i * nSites / nChunk, t = (i + 1) * nSites / nChunk;
-					array<size_t, 4> sumFreq = {};
-					for (size_t j = s; j < t; j++) {
-						sumFreq += freq[j];
-					#ifdef CUSTOMIZED_ANNOTATION_TERMINAL_LENGTH
-						sites[i].push_back(j);
-					#else
-						if (freq[j][0] + freq[j][2] >= 2 && freq[j][1] + freq[j][3] >= 2) sites[i].push_back(j);
-					#endif
-					}
-					double total = sum(sumFreq);
-					if (total > 0) eqfreq.push_back({ sumFreq[0] / total, sumFreq[1] / total, sumFreq[2] / total, sumFreq[3] / total });
-					else eqfreq.push_back({ 0.25, 0.25, 0.25, 0.25 });
 				}
 			}
 
-			AP2.nextAlignment();
+			size_t maxSpeciesman = 0;
+			for (auto const& element : nSpeciesmen) {
+				maxSpeciesman = std::max(maxSpeciesman, element.second);
+			}
+
+			if (std::same_as<cnt_taxon_t, bool> && maxSpeciesman >= 2) {
+				log.log() << "Seems there is more than one haploid genome per taxon and thus bool type cannot be used..." << std::endl;
+				throw(std::logic_error("Incompatible data structure"));
+			}
+			if (std::same_as<cnt_taxon_t, unsigned char> && maxSpeciesman >= 256) {
+				log.log() << "Seems there are more than 255 haploid genomes per taxon (which is fishy) and thus unsigned char type cannot be used..." << std::endl;
+				throw(std::logic_error("Incompatible data structure"));
+			}
+			if (std::same_as<cnt_taxon_t, unsigned short> && maxSpeciesman >= 65536) {
+				common::LogInfo err(-100);
+				err.log() << "Seems there are more than 65535 haploid genomes per taxon (which is astonishing)! Please ask the author for a specially made version..." << std::endl;
+				exit(-1);
+			}
+			if (std::same_as<cnt_t, unsigned char> && nTotalSpeciesmen >= 256) {
+				log.log() << "Seems there are more than 255 haploid genomes in total and thus unsigned char type cannot be used..." << std::endl;
+				throw(std::logic_error("Incompatible data structure"));
+			}
+			if (std::same_as<cnt_t, unsigned short> && nTotalSpeciesmen >= 65536) {
+				common::LogInfo err(-100);
+				err.log() << "Seems there are more than 65535 haploid genomes in total (which is fishy)! Please ask the author for a specially made version..." << std::endl;
+				exit(-1);
+			}
+
 			for (size_t i = 0; i < nChunk; i++) {
-				typename DataClass::Element element;
-				element.iGenomePosBegin = sharedConstData.nGenomePos;
-				element.nPos = sites[i].size();
-				element.cnts.resize(taxon2row.size(), vector<array<typename DataClass::ParentClass::cnt_taxon_t, 4> >(element.nPos));
-				element.taxon2row.resize(common::taxonName2ID.nTaxa(), -1);
-				element.eqFreqs = eqfreq[i];
-				sharedConstData.elements.push_back(element);
-				sharedConstData.nElements++;
-				sharedConstData.nGenomePos += element.nPos;
+				size_t s = i * nSites / nChunk, t = (i + 1) * nSites / nChunk;
+				array<size_t, 4> sumFreq = {};
+				for (size_t j = s; j < t; j++) {
+					sumFreq += freq[j];
+				#ifdef CUSTOMIZED_ANNOTATION_TERMINAL_LENGTH
+					sites[i].push_back(j);
+				#else
+					if (freq[j][0] + freq[j][2] >= 2 && freq[j][1] + freq[j][3] >= 2) sites[i].push_back(j);
+				#endif
+				}
+				double total = sum(sumFreq);
+				if (total > 0) eqfreq.push_back({ sumFreq[0] / total, sumFreq[1] / total, sumFreq[2] / total, sumFreq[3] / total });
+				else eqfreq.push_back({ 0.25, 0.25, 0.25, 0.25 });
 			}
+		}
 
-			while (AP2.nextSeq()) {
-				size_t iTaxon = common::taxonName2ID[AP2.getName()];
-				size_t iRow = taxon2row[iTaxon];
-				string seq = AP2.getSeq();
-				for (size_t iChunk : iota((size_t) 0, nChunk)) {
-					typename DataClass::Element &element = sharedConstData.elements[iElementBegin + iChunk];
-					element.taxon2row[iTaxon] = iRow;
-					for (size_t iPos : iota((size_t) 0, sites[iChunk].size())) {
-						switch (seq[sites[iChunk][iPos]]) {
-							case 'A': element.cnts[iRow][iPos][0] += 1; break;
-							case 'C': element.cnts[iRow][iPos][1] += 1; break;
-							case 'G': element.cnts[iRow][iPos][2] += 1; break;
-							case 'T': element.cnts[iRow][iPos][3] += 1; break;
-						}
+		AP2.nextAlignment();
+		for (size_t i = 0; i < nChunk; i++) {
+			typename DataClass::Element element;
+			element.iGenomePosBegin = sharedConstData.nGenomePos;
+			element.nPos = sites[i].size();
+			element.cnts.resize(taxon2row.size(), vector<array<typename DataClass::ParentClass::cnt_taxon_t, 4> >(element.nPos));
+			element.taxon2row.resize(common::taxonName2ID.nTaxa(), -1);
+			element.eqFreqs = eqfreq[i];
+			sharedConstData.elements.push_back(element);
+			sharedConstData.nGenomePos += element.nPos;
+		}
+
+		while (AP2.nextSeq()) {
+			size_t iTaxon = common::taxonName2ID[AP2.getName()];
+			size_t iRow = taxon2row[iTaxon];
+			string seq = AP2.getSeq();
+			for (size_t iChunk : iota((size_t) 0, nChunk)) {
+				typename DataClass::Element &element = sharedConstData.elements[iElementBegin + iChunk];
+				element.taxon2row[iTaxon] = iRow;
+				for (size_t iPos : iota((size_t) 0, sites[iChunk].size())) {
+					switch (seq[sites[iChunk][iPos]]) {
+						case 'A': element.cnts[iRow][iPos][0] += 1; break;
+						case 'C': element.cnts[iRow][iPos][1] += 1; break;
+						case 'G': element.cnts[iRow][iPos][2] += 1; break;
+						case 'T': element.cnts[iRow][iPos][3] += 1; break;
 					}
 				}
 			}
 		}
-		return sharedConstData;
 	}
+	return sharedConstData;
+}
 
 };
 
@@ -356,22 +355,22 @@ ChangeLog logDriver("Driver",
 	"2026-02-01", "Chao Zhang", "Change prgramName to caster", "patch",
 	"2026-02-08", "Chao Zhang", "Adding more type support", "patch");
 
-class Driver : public common::LogInfo
+template<bool> class Driver : public common::LogInfo
 {
 	using string = std::string;
 
 public:
 	using DataClasses = std::variant<typename Color<StepwiseColorDefaultAttributes<bool, unsigned char> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<unsigned char, unsigned char> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<bool, unsigned short> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<unsigned char, unsigned short> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<unsigned short, unsigned short> >::SharedConstData>;
 	
-	static std::pair<string, string> programNames() {
+	static std::pair<string, string> programNames() noexcept {
 		return { "caster", "Coalescence-aware Alignment-based Species Tree EstimatoR" };
 	}
 
-	static void addArguments() {
+	static void addArguments() noexcept {
 		ARG.addArgument('\0', "chunk", "integer", "The maximum number of sites in each local aligment block for parameter estimation", 0, true, true, "10000");
 	}
 
-	static DataClasses getStepwiseColorSharedConstData(){
+	static DataClasses getStepwiseColorSharedConstData() noexcept {
 		try { return DriverHelper::read<std::variant_alternative_t<0, DataClasses> >(); } catch (...) {}
 		try { return DriverHelper::read<std::variant_alternative_t<1, DataClasses> >(); } catch (...) {}
 		try { return DriverHelper::read<std::variant_alternative_t<2, DataClasses> >(); } catch (...) {}

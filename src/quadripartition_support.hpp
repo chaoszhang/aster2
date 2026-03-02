@@ -170,14 +170,14 @@ public:
 		log.log() << "Annotating " << Support::FULL_NAME << " ..." << std::endl;
 		
 		Random random;
-		Support::staticInitialize(random, data.nElements);
-		ThreadPool3<Support> threadpool(nThreads, 0, data.nElements);
+		Support::staticInitialize(random, data.nElements());
+		ThreadPool3<Support> threadpool(nThreads, 0, data.nElements());
 		QuadripartitionScore<Support> qs(color, threadpool, tree, verbose);
 		qs.labelTree();
 	}
 
 	static void annotate(vector<string> const& supports, Data const& data, Tree& tree, size_t nThreads, int verbose) {
-		Color color(&data);
+		Color color(data);
 		return annotate<LocalBlockBootstrap<Color> >(color, data, tree, nThreads, verbose);
 	}
 };

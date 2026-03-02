@@ -1,3 +1,4 @@
+#include "driver.hpp"
 #include "optimization_algorithm.hpp"
 #include "quadripartition_support.hpp"
 
@@ -5,8 +6,13 @@
 #include "caster.hpp"
 namespace my_tool = caster;
 #else
-#include "caster.hpp"
-namespace my_tool = caster;
+#ifdef ASTRAL
+#include "astral.hpp"
+namespace my_tool = astral;
+#else
+#include "astral.hpp"
+namespace my_tool = astral;
+#endif
 #endif
 
 using std::cerr;
@@ -16,14 +22,18 @@ using namespace std::string_literals;
 ChangeLog logmain("main",
 	"2026-02-01", "Chao Zhang", "Change default -r -s --subsample-min", "patch",
 	"2026-02-08", "Chao Zhang", "Add --root option", "patch",
-	"2026-02-13", "Chao Zhang", "Add time in logs", "patch");
+	"2026-02-13", "Chao Zhang", "Add time in logs", "patch",
+	"2026-03-02", "Chao Zhang", "Allowing no support for quad score undefined", "patch");
 
 int main(int argc, char* argv[]) {
+	static_assert(driver::DRIVER<my_tool::Driver>);
+
 	using std::string;
 	using std::size_t;
 	using Clock = std::chrono::high_resolution_clock;
+	using Driver = my_tool::Driver<true>;
 
-	std::pair<string, string> programNames = my_tool::Driver::programNames();
+	std::pair<string, string> programNames = Driver::programNames();
 	my_tool::Documentation documentation;
 	ARG.set("SHORT_NAME", programNames.first); 
 	ARG.set("FULL_NAME", programNames.second);
@@ -43,7 +53,7 @@ int main(int argc, char* argv[]) {
 	ARG.addArgument('\0', "log-verbose", "integer", "Verbose level in log file", 0, true, true, "5");
 	ARG.addArgument('\0', "no-two-step", "flag", "Never use two-step placement algorithm", 1, true);
 	ARG.addArgument('\0', "subsample-min", "integer", "Minimum #Elements in each division when using subsample procedure", 1, true, true, "5000");
-	my_tool::Driver::addArguments();
+	Driver::addArguments();
 
 	ARG.parse(argc, argv);
 	common::LogInfo::setVerbose(ARG.has("no-log") ? nullptr : new std::ofstream(ARG.get<string>("log")), ARG.get<size_t>("log-verbose"), ARG.get<size_t>("verbose"));
@@ -62,7 +72,7 @@ int main(int argc, char* argv[]) {
 		size_t nSubsequent = ARG.get<size_t>("subsequent-round");
 
 		ARG.log() << "#Taxa: " << nTaxa << endl;
-		ARG.log() << "#Elements: " << stepwiseColorSharedConstData.nElements << endl;
+		ARG.log() << "#Elements: " << stepwiseColorSharedConstData.nElements() << endl;
 		ARG.log() << "#Threads: " << nThreads << endl;
 		ARG.log() << "#Initial-rounds: " << nRounds << endl;
 		ARG.log() << "#Subsequent-rounds: " << nSubsequent << endl;
@@ -80,8 +90,10 @@ int main(int argc, char* argv[]) {
 
 		ARG.log() << "Time after optimization: " << (std::chrono::duration_cast<std::chrono::minutes>(Clock::now() - start)).count() << " minute(s)" << std::endl;
 
-		using SupportAlg = quadripartition_support::Procedure<quadripartition_support::ProcedureAttributes<Color> >;
-		SupportAlg::annotate({}, stepwiseColorSharedConstData, tree, nThreads, 0);
+		if constexpr(stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE<Color>) {
+			using SupportAlg = quadripartition_support::Procedure<quadripartition_support::ProcedureAttributes<Color> >;
+			SupportAlg::annotate({}, stepwiseColorSharedConstData, tree, nThreads, 0);
+		}
 
 		ARG.log() << "Time after support annotation: " << (std::chrono::duration_cast<std::chrono::minutes>(Clock::now() - start)).count() << " minute(s)" << std::endl;
 
@@ -94,6 +106,6 @@ int main(int argc, char* argv[]) {
 			tree.displaySimpleNewick<double, double>(std::cout, "LocalBlockBootstrap", "length");
 			std::cout << endl;
 		}
-	}, my_tool::Driver::getStepwiseColorSharedConstData());
+	}, Driver::getStepwiseColorSharedConstData());
 	return 0;
 }

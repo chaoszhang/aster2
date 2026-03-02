@@ -34,7 +34,8 @@ template<stepwise_colorable::STEPWISE_COLORABLE SC> struct StepwiseColorPlacemen
 };
 
 ChangeLog logStepwiseColorPlacement("StepwiseColorPlacement",
-	"2026-02-02", "Chao Zhang", "Refactoring for conciseness", "patch");
+	"2026-02-02", "Chao Zhang", "Refactoring for conciseness", "patch",
+	"2026-02-26", "Chao Zhang", "Supporting elementClearAndSetTaxonColor", "patch");
 
 template<STEPWISE_COLOR_PLACEMENT_ATTRIBUTES Attributes> class StepwiseColorPlacement : public common::LogInfo {
 public:
@@ -77,9 +78,14 @@ private:
 	void clearSetColor(vector<size_t> const &leaves, size_t iColor, size_t jColor) noexcept{
 		Color &localStepwiseColor = stepwiseColor;
 		instr.mapFuncs.emplace_back([leaves, iColor, jColor, &localStepwiseColor](size_t iElement) noexcept {
-			for (size_t iTaxon: leaves) {
-				localStepwiseColor.elementClearTaxonColor(iElement, iTaxon, iColor);
-				localStepwiseColor.elementSetTaxonColor(iElement, iTaxon, jColor);
+			for (size_t iTaxon : leaves) {
+				if constexpr (stepwise_colorable::ELEMENT_CLEAR_AND_SET_TAXON_COLOR<Color>) {
+					localStepwiseColor.elementClearAndSetTaxonColor(iElement, iTaxon, iColor, jColor);
+				}
+				else {
+					localStepwiseColor.elementClearTaxonColor(iElement, iTaxon, iColor);
+					localStepwiseColor.elementSetTaxonColor(iElement, iTaxon, jColor);
+				}
 			}
 		});
 	}

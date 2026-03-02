@@ -43,9 +43,10 @@ public:
 };
 
 ChangeLog logTwoStepPlacement("TwoStepPlacement",
-	"2026-02-05", "Chao Zhang", "Initial version", "minor");
+	"2026-02-05", "Chao Zhang", "Initial version", "minor",
+	"2026-02-26", "Chao Zhang", "Compatible for no NNI implementation", "patch");
 
-template<placement_algorithm::PLACEMENT_ALGORITHM PlacementAlgorithm, nni_algorithm::NNI_ALGORITHM NNIAlgorithm, bool UNROOTED = true> class TwoStepPlacement : public LogInfo {
+template<placement_algorithm::PLACEMENT_ALGORITHM PlacementAlgorithm, typename NNIAlgorithm, bool UNROOTED = true> class TwoStepPlacement : public LogInfo {
 	using Tree = common::AnnotatedBinaryTree;
 
 	size_t nThreads, iElementBegin, iElementEnd;
@@ -70,7 +71,7 @@ public:
 			typename PlacementAlgorithm::ThreadPool threadpool(nThreads, iElementBegin, iElementEnd);
 			backboneRP(color, threadpool, backbone, taxonOrder | std::views::take(nBackboneLeaves));
 		}
-		{
+		if constexpr (nni_algorithm::NNI_ALGORITHM<NNIAlgorithm>){
 			v2log.log() << "Applying NNI moves to backbone..." << endl;
 			typename NNIAlgorithm::ThreadPool threadpool3(nThreads, iElementBegin, iElementEnd);
 			NNIAlgorithm nniAlg(color, threadpool3, backbone, verbose + 1);
@@ -194,12 +195,14 @@ template<COLORABLE C> struct DefaultProcedureAttributes {
 	using score_t = Color::score_t;
 	template<typename T> using Scheduler = thread_pool::SimpleScheduler<T>;
 	using Placement = placement_algorithm::StepwiseColorPlacement<placement_algorithm::StepwiseColorPlacementDefaultAttributes<Color> >;
-	using NNIAlg = nni_algorithm::StepwiseColorNNI<nni_algorithm::StepwiseColorNNIDefaultAttributes<Color> >;
+	template<typename T> using NNIAlgTemplate = nni_algorithm::StepwiseColorNNI<nni_algorithm::StepwiseColorNNIDefaultAttributes<T> >;
+	using NNIAlg = common::InstantiateIf<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE<Color>, NNIAlgTemplate, Color>;
 	using Random = common::Random<std::mt19937_64>;
 };
 
 ChangeLog logProcedure("optimization_algorithm::Procedure",
-	"2026-02-13", "Chao Zhang", "Switch to sequential subsample", "patch");
+	"2026-02-13", "Chao Zhang", "Switch to sequential subsample", "patch",
+	"2026-02-26", "Chao Zhang", "Compatible for no NNI implementation", "patch");
 
 template<typename Attributes> class Procedure {
 public:
@@ -536,7 +539,7 @@ public:
 		vlog.log() << "#Rounds: " << nTrees << endl;
 		vlog.log() << "#Threads: " << nThreads << endl;
 		size_t minElements = ARG.get<size_t>("subsample-min");
-		size_t nElements = data.nElements;
+		size_t nElements = data.nElements();
 
 		size_t _nPartitions = 1;
 		while (_nPartitions <= nTrees && nElements / (_nPartitions + 1) >= minElements) _nPartitions++;
@@ -571,8 +574,8 @@ public:
 				}
 			}
 		}
-		typename TP_Sequential_ST::Prereq tp_sq_stp = prereq_TP_Sequential_ST(nThreads, 0, data.nElements, verbose);
-		typename TP3_Sequential_NNI::Prereq tp3_sq_nnip = prereq_TP3_Sequential_NNI(nThreads, 0, data.nElements, verbose);
+		typename TP_Sequential_ST::Prereq tp_sq_stp = prereq_TP_Sequential_ST(nThreads, 0, data.nElements(), verbose);
+		typename TP3_Sequential_NNI::Prereq tp3_sq_nnip = prereq_TP3_Sequential_NNI(nThreads, 0, data.nElements(), verbose);
 		TP_Sequential_ST tp_sq_st(tp_sq_stp);
 		vector<Tree> trees2 = tp_sq_st(color, trees);
 		for (Tree& tree : trees2) cdp.addTree(tree);
@@ -582,10 +585,10 @@ public:
 		vector<Tree> trees4 = tp_sq_st2(color, trees3);
 		for (Tree& tree : trees4) cdp.addTree(tree);
 		Tree tree = cdp.optimalUnrootedTree(ZERO);
-		typename TP_ST::Prereq tp_stp = prereq_TP_ST(nThreads, 0, data.nElements, verbose);
+		typename TP_ST::Prereq tp_stp = prereq_TP_ST(nThreads, 0, data.nElements(), verbose);
 		TP_ST tp_st(tp_stp);
 		Tree tree2 = tp_st(color, tree);
-		typename TP3_NNI::Prereq tp3_nnip = prereq_TP3_NNI(nThreads, 0, data.nElements, verbose);
+		typename TP3_NNI::Prereq tp3_nnip = prereq_TP3_NNI(nThreads, 0, data.nElements(), verbose);
 		TP3_NNI tp3_nni(tp3_nnip);
 		Tree tree3 = tp3_nni(color, tree2);
 		TP_ST tp_st2(tp_stp);
@@ -600,7 +603,7 @@ public:
 		vlog.log() << "#Rounds: " << nTrees << endl;
 		vlog.log() << "#Threads: " << nThreads << endl;
 		size_t minElements = ARG.get<size_t>("subsample-min");
-		size_t nElements = data.nElements;
+		size_t nElements = data.nElements();
 
 		size_t _nPartitions = 1;
 		while (_nPartitions <= nTrees && nElements / (_nPartitions + 1) >= minElements) _nPartitions++;
@@ -626,29 +629,34 @@ public:
 					TSP job(p);
 					tree = job(color);
 				}
-				typename TP_ST::Prereq tp_stp = prereq_TP_ST(nThreads, 0, data.nElements, verbose + 1);
-				typename TP3_NNI::Prereq tp3_nnip = prereq_TP3_NNI(nThreads, 0, data.nElements, verbose + 1);
+				typename TP_ST::Prereq tp_stp = prereq_TP_ST(nThreads, 0, data.nElements(), verbose + 1);
 				TP_ST tp_st(tp_stp);
 				Tree tree2 = tp_st(color, tree);
 				cdp.addTree(tree2);
-				TP3_NNI tp3_nni(tp3_nnip);
-				Tree tree3 = tp3_nni(color, tree2);
-				TP_ST tp_st2(tp_stp);
-				Tree tree4 = tp_st2(color, tree3);
-				cdp.addTree(tree4);
+				if constexpr (nni_algorithm::NNI_ALGORITHM<NNIAlg>) {
+					typename TP3_NNI::Prereq tp3_nnip = prereq_TP3_NNI(nThreads, 0, data.nElements(), verbose + 1);
+					TP3_NNI tp3_nni(tp3_nnip);
+					Tree tree3 = tp3_nni(color, tree2);
+					TP_ST tp_st2(tp_stp);
+					Tree tree4 = tp_st2(color, tree3);
+					cdp.addTree(tree4);
+				}
 			}
 		}
 		{
 			Tree tree = cdp.optimalUnrootedTree(ZERO);
-			typename TP_ST::Prereq tp_stp = prereq_TP_ST(nThreads, 0, data.nElements, verbose);
+			typename TP_ST::Prereq tp_stp = prereq_TP_ST(nThreads, 0, data.nElements(), verbose);
 			TP_ST tp_st(tp_stp);
 			Tree tree2 = tp_st(color, tree);
-			typename TP3_NNI::Prereq tp3_nnip = prereq_TP3_NNI(nThreads, 0, data.nElements, verbose);
-			TP3_NNI tp3_nni(tp3_nnip);
-			Tree tree3 = tp3_nni(color, tree2);
-			TP_ST tp_st2(tp_stp);
-			Tree tree4 = tp_st2(color, tree2);
-			return tree4;
+			if constexpr (nni_algorithm::NNI_ALGORITHM<NNIAlg>) {
+				typename TP3_NNI::Prereq tp3_nnip = prereq_TP3_NNI(nThreads, 0, data.nElements(), verbose);
+				TP3_NNI tp3_nni(tp3_nnip);
+				Tree tree3 = tp3_nni(color, tree2);
+				TP_ST tp_st2(tp_stp);
+				Tree tree4 = tp_st2(color, tree3);
+				return tree4;
+			}
+			else return tree2;
 		}
 	}
 
@@ -659,7 +667,7 @@ public:
 	static Tree heuristSearch(Data const& data, size_t nTaxa, size_t r, size_t s, size_t nThreads, int verbose, Tree f(ConstrainedDP&, Random&, Color&, Data const&, size_t, size_t, size_t, int)) {
 		Random random;
 		ConstrainedDP cdp(random, nTaxa, verbose);
-		Color color(&data);
+		Color color(data);
 		Tree tree = f(cdp, random, color, data, nTaxa, r, nThreads, verbose + 1);
 		score_t lastScore, newScore = tree.get<score_t>(Tree::SCORE);
 		do {

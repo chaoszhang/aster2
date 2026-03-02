@@ -138,6 +138,7 @@
   <ItemGroup>
     <ClInclude Include="algorithm.hpp" />
     <ClInclude Include="alignment_utilities.hpp" />
+    <ClInclude Include="astral.hpp" />
     <ClInclude Include="common.hpp" />
     <ClInclude Include="documentation.hpp" />
     <ClInclude Include="driver.hpp" />
