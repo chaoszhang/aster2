@@ -126,7 +126,8 @@ ChangeLog::Shared ChangeLog::shared;
 ChangeLog logChangeLog("ChangeLog",
 "2026-02-01", "Chao Zhang", "Save date of last update", "patch",
 "2026-02-02", "Chao Zhang", "Make helper function to constructor", "patch",
-"2026-02-25", "Chao Zhang", "Fix formating", "patch");
+"2026-02-25", "Chao Zhang", "Fix formating", "patch",
+"2026-03-17", "Chao Zhang", "Fix negative verbose", "patch");
 
 class LogInfo {
 	struct Shared {
@@ -157,6 +158,7 @@ public:
 	}
 
 	LogInfo const& log() const noexcept {
+		if (verbose < 0) return *this << "[WARNING/ERROR] ";
 		for (int i : std::views::iota(0, verbose)) *this << " ";
 		*this << "- ";
 		if (shared.showThreadID) *this << "[" << std::hash<std::thread::id>()(std::this_thread::get_id()) % 10000 << "] ";

@@ -15,6 +15,7 @@
 #include<iostream>
 #include<limits>
 #include<memory>
+#include<optional>
 #include<queue>
 #include<random>
 #include<ranges>

@@ -70,8 +70,8 @@ public:
 	struct Tree {
 		struct Node {
 			index_t parent = -1, lc = -1, rc = -1;
-			support_t wSupport = 0;
-			length_t wLength = 1;
+			support_t wSupport = 1;
+			length_t wLength = 0;
 			score_t score = 0;
 
 			score_t x = 0, y = 0, z = 0, tx = 0, ty = 0, tz = 0, q = 0;
@@ -137,9 +137,9 @@ public:
 			w.xzb = (u.xzb + v.xzb + u.x * v.z + u.z * v.x) * wSupport;
 			w.yzb = (u.yzb + v.yzb + u.y * v.z + u.z * v.y) * wSupport;
 
-			w.tx = (u.tx + v.tx + u.y * (v.z2a - v.z2b) + (u.z2a - u.z2b) * v.y + u.z * (v.y2a - v.y2b) + (u.y2a - u.y2b) * v.z) * w.wLength;
-			w.ty = (u.ty + v.ty + u.x * (v.z2a - v.z2b) + (u.z2a - u.z2b) * v.x + u.z * (v.x2a - v.x2b) + (u.x2a - u.x2b) * v.z) * w.wLength;
-			w.tz = (u.tz + v.tz + u.x * (v.y2a - v.y2b) + (u.y2a - u.y2b) * v.x + u.y * (v.x2a - v.x2b) + (u.x2a - u.x2b) * v.y) * w.wLength;
+			w.tx = (u.tx + v.tx + u.y * (v.z2a - v.z2b) + (u.z2a - u.z2b) * v.y + u.z * (v.y2a - v.y2b) + (u.y2a - u.y2b) * v.z) * wLength;
+			w.ty = (u.ty + v.ty + u.x * (v.z2a - v.z2b) + (u.z2a - u.z2b) * v.x + u.z * (v.x2a - v.x2b) + (u.x2a - u.x2b) * v.z) * wLength;
+			w.tz = (u.tz + v.tz + u.x * (v.y2a - v.y2b) + (u.y2a - u.y2b) * v.x + u.y * (v.x2a - v.x2b) + (u.x2a - u.x2b) * v.y) * wLength;
 
 			w.score = u.x * v.tx + u.y * v.ty + u.z * v.tz + v.x * u.tx + v.y * u.ty + v.z * u.tz
 				+ u.x2a * v.yza - u.x2b * v.yzb
@@ -170,9 +170,10 @@ public:
 		Tree& tree = trees[iElement];
 		typename Tree::Node& node = tree.nodes[tree.taxonID2nodeID[iTaxon]];
 		// Assuming x2a, xya or alike are all zeros
-		if (iColor == 0) node.x++;
-		if (iColor == 1) node.y++;
-		if (iColor == 2) node.z++;
+		score_t wLength = node.wLength;
+		if (iColor == 0) node.x += wLength;
+		if (iColor == 1) node.y += wLength;
+		if (iColor == 2) node.z += wLength;
 		recursiveUpdate(iElement, node.parent);
 	}
 
@@ -180,9 +181,10 @@ public:
 		Tree& tree = trees[iElement];
 		typename Tree::Node& node = tree.nodes[tree.taxonID2nodeID[iTaxon]];
 		// Assuming x2a, xya or alike are all zeros
-		if (iColor == 0) node.x--;
-		if (iColor == 1) node.y--;
-		if (iColor == 2) node.z--;
+		score_t wLength = node.wLength;
+		if (iColor == 0) node.x -= wLength;
+		if (iColor == 1) node.y -= wLength;
+		if (iColor == 2) node.z -= wLength;
 		recursiveUpdate(iElement, node.parent);
 	}
 
@@ -190,12 +192,13 @@ public:
 		Tree& tree = trees[iElement];
 		typename Tree::Node& node = tree.nodes[tree.taxonID2nodeID[iTaxon]];
 		// Assuming x2a, xya or alike are all zeros
-		if (iColor == 0) node.x--;
-		if (iColor == 1) node.y--;
-		if (iColor == 2) node.z--;
-		if (jColor == 0) node.x++;
-		if (jColor == 1) node.y++;
-		if (jColor == 2) node.z++;
+		score_t wLength = node.wLength;
+		if (iColor == 0) node.x -= wLength;
+		if (iColor == 1) node.y -= wLength;
+		if (iColor == 2) node.z -= wLength;
+		if (jColor == 0) node.x += wLength;
+		if (jColor == 1) node.y += wLength;
+		if (jColor == 2) node.z += wLength;
 		recursiveUpdate(iElement, node.parent);
 	}
 
@@ -204,11 +207,170 @@ public:
 
 namespace DriverHelper {
 
-using namespace std;
+	using namespace std;
 
-template<typename DataClass> DataClass read() {
-	return DataClass();
-}
+	namespace Newick{
+		void skipWhitespace(string_view &sv) noexcept { while (!sv.empty() && isspace(sv.front())) sv.remove_prefix(1); }
+
+		pair<string, string> splitLabelAndLength(string_view& sv) noexcept {
+			skipWhitespace(sv);
+			size_t i = 0;
+			while (i < sv.size() && sv[i] != ':' && sv[i] != ',' && sv[i] != ')' && sv[i] != ';') i++;
+			string label = string(sv.substr(0, i));
+			sv.remove_prefix(i);
+			string length;
+			if (!sv.empty() && sv[0] == ':') {
+				sv.remove_prefix(1);
+				skipWhitespace(sv);
+				i = 0;
+				while (i < sv.size() && sv[i] != ',' && sv[i] != ')' && sv[i] != ';') i++;
+				length = string(sv.substr(0, i));
+				sv.remove_prefix(i);
+			}
+			return { label, length };
+		}
+
+		optional<double> parseSupport(string const& s) noexcept {
+			try {
+				return std::stod(s);
+			}
+			catch (...) {
+				return std::nullopt;
+			}
+		}
+
+		optional<double> parseLength(string const& s) noexcept {
+			try {
+				return std::stod(s);
+			}
+			catch (...) {
+				return std::nullopt;
+			}
+		}
+	}
+
+	struct Node {
+		vector<shared_ptr<Node> > children;
+		string label, length;
+		bool isReal = true;
+	
+		Node(string_view& sv) { // Assuming the input is a valid Newick format
+			Newick::skipWhitespace(sv);
+			if (sv[0] == '(') {
+				sv.remove_prefix(1);
+				while (true) {
+					children.emplace_back(make_shared<Node>(sv));
+					Newick::skipWhitespace(sv);
+					if (sv[0] == ',') {
+						sv.remove_prefix(1);
+						continue;
+					}
+					else if (sv[0] == ')') {
+						sv.remove_prefix(1);
+						break;
+					}
+					else throw std::invalid_argument("Invalid Newick format");
+				}
+			}
+			tie(label, length) = Newick::splitLabelAndLength(sv);
+		}
+
+		Node(shared_ptr<Node> lc, shared_ptr<Node> rc, bool isReal): isReal(isReal){
+			children.push_back(lc);
+			children.push_back(rc);
+		}
+
+		int huffman() noexcept {
+			if (children.empty()) {
+				common::taxonName2ID[label];
+				return 1;
+			}
+			auto cmp = [](pair<shared_ptr<Node>,int> const &left, pair<shared_ptr<Node>,int> const &right) { return left.second < right.second; };
+			priority_queue<pair<shared_ptr<Node>, int>, vector<pair<shared_ptr<Node>, int> >, decltype(cmp)> pq(cmp);
+			for (auto& child : children) pq.push({child, child->huffman()});
+			children.clear();
+			while (pq.size() > 2) {
+				auto [lc, hlc] = pq.top(); pq.pop();
+				auto [rc, hrc] = pq.top(); pq.pop();
+				pq.push({ make_shared<Node>(lc, rc, false), hlc + hrc });
+			}
+			{
+				auto [lc, hlc] = pq.top(); pq.pop();
+				auto [rc, hrc] = pq.top(); pq.pop();
+				children.push_back(lc);
+				children.push_back(rc);
+				return hlc + hrc;
+			}
+		}
+
+		void minMaxSupport(double &minSupport, double &maxSupport) const noexcept {
+			if (children.empty()) return;
+			for (auto& child : children) child->minMaxSupport(minSupport, maxSupport);
+			if (isReal) {
+				optional<double> support = Newick::parseSupport(label);
+				if (support){
+					minSupport = std::min(minSupport, *support);
+					maxSupport = std::max(maxSupport, *support);
+				}
+			}
+		}
+
+		template<typename Color> Color::SharedConstData::Element::Node* convert(double minSupport, double maxSupport) noexcept {
+			using DataNode = typename Color::SharedConstData::Element::Node;
+			DataNode* node = new DataNode();
+
+			if (!children.empty()) {
+				node->lc.reset(children[0]->convert<Color>(minSupport, maxSupport));
+				node->rc.reset(children[1]->convert<Color>(minSupport, maxSupport));
+				if constexpr (Color::WEIGHTING_BY_SUPPORT) {
+					optional<double> support = Newick::parseSupport(label);
+					if (support) node->wSupport = 1 - (*support - minSupport) / (maxSupport - minSupport);
+				}
+			}
+			else {
+				node->leafID = common::taxonName2ID[label];
+			}
+
+			if constexpr (Color::WEIGHTING_BY_LENGTH) {
+				optional<double> len = Newick::parseLength(length);
+				if (len) node->wLength = exp(- *len);
+			}
+
+			return node;
+		}
+	};
+
+	template<typename DataClass> DataClass read() {
+		ifstream fin(ARG.get<string>("input"));
+		string line;
+		vector<shared_ptr<Node> > trees;
+		double minSupport = 0.333, maxSupport = 1;
+		while (getline(fin, line)) {
+			string_view sv(line);
+			shared_ptr<Node> root(new Node(sv));
+			root->huffman();
+			if constexpr (DataClass::ParentClass::WEIGHTING_BY_SUPPORT) root->minMaxSupport(minSupport, maxSupport);
+			trees.push_back(root);
+		}
+		if (minSupport < 0.33) minSupport = 0;
+		if (maxSupport > 2) {
+			minSupport = 0;
+			maxSupport = 100;
+		}
+		common::LogInfo log(1);
+		if constexpr (DataClass::ParentClass::WEIGHTING_BY_SUPPORT){
+			log.log() << "Min support value = " << minSupport << std::endl;
+			log.log() << "Max support value = " << maxSupport << std::endl;
+		}
+
+		DataClass data;
+		data.nTaxa = common::taxonName2ID.nTaxa();
+		for (auto& tree : trees) {
+			data.elements.emplace_back();
+			data.elements.back().root.reset(tree->convert<typename DataClass::ParentClass>(minSupport, maxSupport));
+		}
+		return data;
+	}
 
 };
 
@@ -217,29 +379,26 @@ template<bool> class Driver : public common::LogInfo
 	using string = std::string;
 
 public:
-	//using DataClasses = std::variant<typename Color<StepwiseColorDefaultAttributes<double, true, true> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<double, false, true> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<double, true, false> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<unsigned long long, false, false> >::SharedConstData>;
-	using DataClasses = std::variant<typename Color<StepwiseColorDefaultAttributes<double, true, true> >::SharedConstData>;
+	using DataClasses = std::variant<typename Color<StepwiseColorDefaultAttributes<double, true, true> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<double, true, false> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<double, false, true> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<unsigned long long, false, false> >::SharedConstData>;
 
 	static std::pair<string, string> programNames() noexcept {
 		return { "astral", "Accurate Species Tree ALgorithm (ASTRAL-IV)" };
 	}
 
 	static void addArguments() noexcept {
-		//ARG.addArgument('\0', "chunk", "integer", "The maximum number of sites in each local aligment block for parameter estimation", 0, true, true, "10000");
+		ARG.addArgument('\0', "mode", "integer", "Weighting mode (1: hybrid weighting, 2: support only, 3: length only, 4: unweighted)", 0, true, true, "1");
 	}
 
 	static DataClasses getStepwiseColorSharedConstData() noexcept {
-		/*
-		try { return DriverHelper::read<std::variant_alternative_t<0, DataClasses> >(); }
-		catch (...) {}
-		try { return DriverHelper::read<std::variant_alternative_t<1, DataClasses> >(); }
-		catch (...) {}
-		try { return DriverHelper::read<std::variant_alternative_t<2, DataClasses> >(); }
-		catch (...) {}
-		try { return DriverHelper::read<std::variant_alternative_t<3, DataClasses> >(); }
-		catch (...) {}
-		*/
-		return DriverHelper::read<std::variant_alternative_t<0, DataClasses> >();
+		size_t mode = ARG.get<size_t>("mode");
+		if (mode == 1) return DriverHelper::read<typename Color<StepwiseColorDefaultAttributes<double, true, true> >::SharedConstData>();
+		if (mode == 2) return DriverHelper::read<typename Color<StepwiseColorDefaultAttributes<double, true, false> >::SharedConstData>();
+		if (mode == 3) return DriverHelper::read<typename Color<StepwiseColorDefaultAttributes<double, false, true> >::SharedConstData>();
+		if (mode == 4) return DriverHelper::read<typename Color<StepwiseColorDefaultAttributes<unsigned long long, false, false> >::SharedConstData>();
+		
+		common::LogInfo vlog(-99);
+		vlog.log() << "Error: Invalid mode: " << mode << std::endl;
+		exit(-1);
 	}
 };
 
