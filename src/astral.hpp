@@ -74,12 +74,24 @@ public:
 			length_t wLength = 0;
 			score_t score = 0;
 
-			score_t x = 0, y = 0, z = 0, tx = 0, ty = 0, tz = 0, q = 0;
+			score_t x = 0, y = 0, z = 0, tx = 0, ty = 0, tz = 0;
 			score_t x2a = 0, y2a = 0, z2a = 0, xya = 0, xza = 0, yza = 0;
 			score_t x2b = 0, y2b = 0, z2b = 0, xyb = 0, xzb = 0, yzb = 0;
 		};
 
+		struct QNode {
+			score_t w = 0, xy_zw = 0, xz_yw = 0, xw_yz = 0;
+
+			score_t xwa = 0, ywa = 0, zwa = 0;
+			score_t xwb = 0, ywb = 0, zwb = 0;
+
+			score_t y_zw = 0, x_zw = 0, xy_w = 0, xy_z = 0;
+			score_t z_yw = 0, x_yw = 0, xz_w = 0, xz_y = 0;
+			score_t w_yz = 0, x_yz = 0, xw_z = 0, xw_y = 0;
+		};
+
 		vector<Node> nodes;
+		vector<QNode> qnodes;
 		vector<index_t> taxonID2nodeID; // taxonID2nodeID[iTaxon] -> iNode in nodes
 
 		index_t build(typename SharedConstData::Element::Node const& sNode) noexcept {
@@ -90,6 +102,7 @@ public:
 			}
 			index_t iNode = nodes.size();
 			nodes.emplace_back();
+			qnodes.emplace_back();
 			Node& node = nodes.back();
 			node.wSupport = sNode.wSupport;
 			node.wLength = sNode.wLength;
@@ -109,7 +122,7 @@ public:
 			build(*element.root);
 		}
 
-		void update(index_t iNode) noexcept {
+		void update(index_t iNode, bool quadMode) noexcept {
 			if (iNode == -1) return;
 
 			Node& w = nodes[iNode];
@@ -147,17 +160,64 @@ public:
 				+ u.z2a * v.xya - u.z2b * v.xyb
 				+ u.score + v.score;
 
-			update(w.parent);
+			if (quadMode) {
+				QNode& W = qnodes[iNode];
+				QNode& U = qnodes[w.lc];
+				QNode& V = qnodes[w.rc];
+
+				W.w = (U.w + V.w) * wLength;
+
+				W.xwa = U.xwa + V.xwa + u.x * V.w + U.w * v.x;
+				W.ywa = U.ywa + V.ywa + u.y * V.w + U.w * v.y;
+				W.zwa = U.zwa + V.zwa + u.z * V.w + U.w * v.z;
+
+				W.xwb = (U.xwb + V.xwb + u.x * V.w + U.w * v.x) * wSupport;
+				W.ywb = (U.ywb + V.ywb + u.y * V.w + U.w * v.y) * wSupport;
+				W.zwb = (U.zwb + V.zwb + u.z * V.w + U.w * v.z) * wSupport;
+
+				W.y_zw = (U.y_zw + V.y_zw + u.y * (V.zwa - V.zwb) + (U.zwa - U.zwb) * v.y) * wLength;
+				W.x_zw = (U.x_zw + V.x_zw + u.x * (V.zwa - V.zwb) + (U.zwa - U.zwb) * v.x) * wLength;
+				W.xy_w = (U.xy_w + V.xy_w + U.w * (v.xya - v.xyb) + (u.xya - u.xyb) * V.w) * wLength;
+				W.xy_z = (U.xy_z + V.xy_z + u.z * (v.xya - v.xyb) + (u.xya - u.xyb) * v.z) * wLength;
+				W.xy_zw = U.xy_zw + V.xy_zw + u.xya * V.zwa - u.xyb * V.zwb + U.zwa * v.xya - U.zwb * v.xyb
+					+ u.x * V.y_zw + U.y_zw * v.x
+					+ u.y * V.x_zw + U.x_zw * v.y
+					+ u.z * V.xy_w + U.xy_w * v.z
+					+ U.w * V.xy_z + U.xy_z * V.w;
+
+				W.z_yw = (U.z_yw + V.z_yw + u.z * (V.ywa - V.ywb) + (U.ywa - U.ywb) * v.z) * wLength;
+				W.x_yw = (U.x_yw + V.x_yw + u.x * (V.ywa - V.ywb) + (U.ywa - U.ywb) * v.x) * wLength;
+				W.xz_w = (U.xz_w + V.xz_w + U.w * (v.xza - v.xzb) + (u.xza - u.xzb) * V.w) * wLength;
+				W.xz_y = (U.xz_y + V.xz_y + u.y * (v.xza - v.xzb) + (u.xza - u.xzb) * v.y) * wLength;
+				W.xz_yw = U.xz_yw + V.xz_yw + u.xza * V.ywa - u.xzb * V.ywb + U.ywa * v.xza - U.ywb * v.xzb
+					+ u.x * V.z_yw + U.z_yw * v.x
+					+ u.z * V.x_yw + U.x_yw * v.z
+					+ u.y * V.xz_w + U.xz_w * v.y
+					+ U.w * V.xz_y + U.xz_y * V.w;
+
+				W.w_yz = (U.w_yz + V.w_yz + U.w * (v.yza - v.yzb) + (u.yza - u.yzb) * V.w) * wLength;
+				W.x_yz = (U.x_yz + V.x_yz + u.x * (v.yza - v.yzb) + (u.yza - u.yzb) * v.x) * wLength;
+				W.xw_z = (U.xw_z + V.xw_z + u.z * (V.xwa - V.xwb) + (U.xwa - U.xwb) * v.z) * wLength;
+				W.xw_y = (U.xw_y + V.xw_y + u.y * (V.xwa - V.xwb) + (U.xwa - U.xwb) * v.y) * wLength;
+				W.xw_yz = U.xw_yz + V.xw_yz + U.xwa * v.yza - U.xwb * v.yzb + u.yza * V.xwa - u.yzb * V.xwb
+					+ u.x * V.w_yz + U.w_yz * v.x
+					+ U.w * V.x_yz + U.x_yz * V.w
+					+ u.y * V.xw_z + U.xw_z * v.y
+					+ u.z * V.xw_y + U.xw_y * v.z;
+			}
+
+			update(w.parent, quadMode);
 		}
 	};
 
 	void recursiveUpdate(size_t iElement, index_t iNode) noexcept {
-		trees[iElement].update(iNode);
+		trees[iElement].update(iNode, quadMode);
 		scores[iElement] = trees[iElement].nodes.back().score;
 	}
 
 	vector<Tree> trees;
 	vector<score_t> scores;
+	bool quadMode = false;
 
 public:
 	Color(SharedConstData const& data) noexcept : scores(data.nElements()) {
@@ -168,41 +228,55 @@ public:
 
 	void elementSetTaxonColor(size_t iElement, size_t iTaxon, size_t iColor) noexcept {
 		Tree& tree = trees[iElement];
-		typename Tree::Node& node = tree.nodes[tree.taxonID2nodeID[iTaxon]];
+		index_t iNode = tree.taxonID2nodeID[iTaxon];
+		typename Tree::Node& node = tree.nodes[iNode];
 		// Assuming x2a, xya or alike are all zeros
 		score_t wLength = node.wLength;
 		if (iColor == 0) node.x += wLength;
 		if (iColor == 1) node.y += wLength;
 		if (iColor == 2) node.z += wLength;
+		if (iColor == 3) tree.qnodes[iNode].w += wLength;
 		recursiveUpdate(iElement, node.parent);
 	}
 
 	void elementClearTaxonColor(size_t iElement, size_t iTaxon, size_t iColor) noexcept {
 		Tree& tree = trees[iElement];
-		typename Tree::Node& node = tree.nodes[tree.taxonID2nodeID[iTaxon]];
+		index_t iNode = tree.taxonID2nodeID[iTaxon];
+		typename Tree::Node& node = tree.nodes[iNode];
 		// Assuming x2a, xya or alike are all zeros
 		score_t wLength = node.wLength;
 		if (iColor == 0) node.x -= wLength;
 		if (iColor == 1) node.y -= wLength;
 		if (iColor == 2) node.z -= wLength;
+		if (iColor == 3) tree.qnodes[iNode].w -= wLength;
 		recursiveUpdate(iElement, node.parent);
 	}
 
 	void elementClearAndSetTaxonColor(size_t iElement, size_t iTaxon, size_t iColor, size_t jColor) noexcept {
 		Tree& tree = trees[iElement];
-		typename Tree::Node& node = tree.nodes[tree.taxonID2nodeID[iTaxon]];
+		index_t iNode = tree.taxonID2nodeID[iTaxon];
+		typename Tree::Node& node = tree.nodes[iNode];
 		// Assuming x2a, xya or alike are all zeros
 		score_t wLength = node.wLength;
 		if (iColor == 0) node.x -= wLength;
 		if (iColor == 1) node.y -= wLength;
 		if (iColor == 2) node.z -= wLength;
+		if (iColor == 3) tree.qnodes[iNode].w -= wLength;
 		if (jColor == 0) node.x += wLength;
 		if (jColor == 1) node.y += wLength;
 		if (jColor == 2) node.z += wLength;
+		if (jColor == 3) tree.qnodes[iNode].w += wLength;
 		recursiveUpdate(iElement, node.parent);
 	}
 
 	score_t elementScore(size_t iElement) const noexcept { return scores[iElement]; }
+
+	array<score_t, 3> elementQuadripartitionScores(size_t iElement) const noexcept {
+		typename Tree::QNode const& qnode = trees[iElement].qnodes.back();
+		return { qnode.xy_zw, qnode.xz_yw, qnode.xw_yz };
+	}
+
+	void setQuadripartitionMode(bool mode) noexcept { quadMode = mode; }
 };
 
 namespace DriverHelper {
