@@ -32,6 +32,9 @@ template<typename score_type, bool wSupport, bool wLength> struct StepwiseColorD
 	static inline score_t constexpr EPSILON = [] { if constexpr (std::integral<score_t>) return 0; else return 1e-3; }();
 };
 
+ChangeLog logColor("Color",
+	"2026-03-30", "Chao Zhang", "Bug fix in resolving polytomies", "patch");
+
 template<STEPWISE_COLOR_ATTRIBUTES Attributes> class Color {
 public:
 	using score_t = Attributes::score_t;
@@ -52,8 +55,8 @@ public:
 			struct Node {
 				unique_ptr<Node> lc, rc;
 				index_t leafID = -1;
-				support_t wSupport = 0;
-				length_t wLength = 1;
+				support_t wSupport = 1;
+				length_t wLength = 0;
 
 				bool isLeaf() const noexcept { return !lc; }
 			};
@@ -396,19 +399,26 @@ namespace DriverHelper {
 			if (!children.empty()) {
 				node->lc.reset(children[0]->convert<Color>(minSupport, maxSupport));
 				node->rc.reset(children[1]->convert<Color>(minSupport, maxSupport));
-				if constexpr (Color::WEIGHTING_BY_SUPPORT) {
+				if (!isReal) node->wSupport = 1;
+				else if constexpr (Color::WEIGHTING_BY_SUPPORT) {
 					optional<double> support = Newick::parseSupport(label);
 					if (support) node->wSupport = 1 - (*support - minSupport) / (maxSupport - minSupport);
+					else node->wSupport = 1;
 				}
+				else node->wSupport = 0;
 			}
 			else {
 				node->leafID = common::taxonName2ID[label];
+				node->wSupport = 0;
 			}
 
-			if constexpr (Color::WEIGHTING_BY_LENGTH) {
+			if (!isReal) node->wLength = 1;
+			else if constexpr (Color::WEIGHTING_BY_LENGTH) {
 				optional<double> len = Newick::parseLength(length);
 				if (len) node->wLength = exp(- *len);
+				else node->wLength = 0;
 			}
+			else node->wLength = 1;
 
 			return node;
 		}
