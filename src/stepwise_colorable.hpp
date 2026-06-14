@@ -43,5 +43,14 @@ template<class T> concept SET_QUADRIPARTITION_MODE = requires(T t, bool b)
 	{ t.setQuadripartitionMode(b) } noexcept;
 };
 
+ChangeLog logTAXON_ORDER_PRIORITIZING("TAXON_ORDER_PRIORITIZING",
+	"2026-06-14", "Chao Zhang", "Compatible for order prioritizing", "patch");
+
+template<class T> concept TAXON_ORDER_PRIORITIZING = requires(std::vector<size_t> &taxonOrder)
+{
+	requires STEPWISE_COLORABLE<T>;
+	{ T::taxonOrderPrioritizing(taxonOrder) } noexcept;
+};
+
 };
 #endif

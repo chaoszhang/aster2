@@ -190,6 +190,22 @@ public:
 	}
 };
 
+ChangeLog logTaxonOrderGenerator("TaxonOrderGenerator",
+	"2026-06-14", "Chao Zhang", "Compatible for order prioritizing", "patch");
+
+template<COLORABLE Color, typename Random = common::Random<std::mt19937_64> > class TaxonOrderGenerator {
+public:
+	vector<size_t> operator()(Random& random, size_t nTaxa, int verbose = LogInfo::DEFAULT_VERBOSE) const {
+		LogInfo const log(verbose);
+		vector<size_t> order = random.randomTaxonOrder(nTaxa);
+		if constexpr (stepwise_colorable::TAXON_ORDER_PRIORITIZING<Color>) {
+			log.log() << "Prioritizing taxa ..." << endl;
+			Color::taxonOrderPrioritizing(order);
+		}
+		return order;
+	}
+};
+
 template<COLORABLE C> struct DefaultProcedureAttributes {
 	using Color = C;
 	using score_t = Color::score_t;
@@ -198,11 +214,13 @@ template<COLORABLE C> struct DefaultProcedureAttributes {
 	template<typename T> using NNIAlgTemplate = nni_algorithm::StepwiseColorNNI<nni_algorithm::StepwiseColorNNIDefaultAttributes<T> >;
 	using NNIAlg = common::InstantiateIf<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE<Color>, NNIAlgTemplate, Color>;
 	using Random = common::Random<std::mt19937_64>;
+	using TaxonOrder = TaxonOrderGenerator<Color, Random>;
 };
 
 ChangeLog logProcedure("optimization_algorithm::Procedure",
 	"2026-02-13", "Chao Zhang", "Switch to sequential subsample", "patch",
-	"2026-02-26", "Chao Zhang", "Compatible for no NNI implementation", "patch");
+	"2026-02-26", "Chao Zhang", "Compatible for no NNI implementation", "patch",
+	"2026-06-14", "Chao Zhang", "Compatible for order prioritizing", "patch");
 
 template<typename Attributes> class Procedure {
 public:
@@ -211,6 +229,7 @@ public:
 	using Tree = common::AnnotatedBinaryTree;
 	using Random = Attributes::Random;
 	using Color = Attributes::Color;
+	using TaxonOrder = Attributes::TaxonOrder;
 	using Data = Color::SharedConstData;
 	template<typename T> using Scheduler = thread_pool::SimpleScheduler<T>;
 	using ThreadPool = thread_pool::ThreadPool<score_t, Scheduler>;
@@ -222,6 +241,7 @@ public:
 	using ConstrainedDP = constrained_dp_algorithm::ConstrainedDP<score_t, Random>;
 	static score_t constexpr ZERO = Placement::ZERO;
 	static score_t constexpr EPSILON = Color::EPSILON;
+	static TaxonOrder const TAXON_ORDER;
 
 	struct RP {
 		struct Prereq {
@@ -342,7 +362,7 @@ public:
 	using Parallel_TSP = Parallel_X<TSP>;
 
 	static typename TP_RP::Prereq prereq_TP_RP(Random& random, size_t nThreads, size_t iElementBegin, size_t iElementEnd, size_t nTaxa, int verbose) {
-		typename RP::Prereq rp(verbose, random.randomTaxonOrder(nTaxa));
+		typename RP::Prereq rp(verbose, TAXON_ORDER(random, nTaxa, verbose + 1));
 		typename TP::Prereq tp(verbose + 1, nThreads, iElementBegin, iElementEnd);
 		typename TP_RP::Prereq p(rp, tp);
 		return p;
@@ -357,7 +377,7 @@ public:
 			size_t iElementBegin = iParallel * nElements / nParallel + iTotalElementBegin;
 			size_t iElementEnd = (iParallel + 1) * nElements / nParallel + iTotalElementBegin;
 
-			typename RP::Prereq rp(verbose + 1, random.randomTaxonOrder(nTaxa));
+			typename RP::Prereq rp(verbose + 1, TAXON_ORDER(random, nTaxa, verbose + 1));
 			typename TP::Prereq tp(verbose + 2, iThreadEnd - iThreadBegin, iElementBegin, iElementEnd);
 			jobs.emplace_back(rp, tp);
 		}
@@ -366,7 +386,7 @@ public:
 	}
 
 	static typename TSP::Prereq prereq_TSP(Random& random, size_t nThreads, size_t iElementBegin, size_t iElementEnd, size_t nTaxa, int verbose) {
-		typename TSP::Prereq p(verbose, nThreads, iElementBegin, iElementEnd, random.randomTaxonOrder(nTaxa));
+		typename TSP::Prereq p(verbose, nThreads, iElementBegin, iElementEnd, TAXON_ORDER(random, nTaxa, verbose + 1));
 		return p;
 	}
 
@@ -379,7 +399,7 @@ public:
 			size_t iElementBegin = iParallel * nElements / nParallel + iTotalElementBegin;
 			size_t iElementEnd = (iParallel + 1) * nElements / nParallel + iTotalElementBegin;
 
-			typename TSP::Prereq tsp(verbose + 1, iThreadEnd - iThreadBegin, iElementBegin, iElementEnd, random.randomTaxonOrder(nTaxa));
+			typename TSP::Prereq tsp(verbose + 1, iThreadEnd - iThreadBegin, iElementBegin, iElementEnd, TAXON_ORDER(random, nTaxa, verbose + 2));
 			jobs.emplace_back(tsp);
 		}
 		typename Parallel_TSP::Prereq p(verbose, jobs);

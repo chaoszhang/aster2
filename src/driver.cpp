@@ -10,8 +10,13 @@ namespace my_tool = caster;
 #include "astral.hpp"
 namespace my_tool = astral;
 #else
+#ifdef SISTER
+#include "sister.hpp"
+namespace my_tool = sister;
+#else
 #include "astral.hpp"
 namespace my_tool = astral;
+#endif
 #endif
 #endif
 
