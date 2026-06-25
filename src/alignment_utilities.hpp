@@ -8,7 +8,8 @@ namespace aligment_utilities {
 using namespace std;
 
 ChangeLog logAlignmentParser("AlignmentParser",
-    "2026-02-13", "Chao Zhang", "Speeding up preprocess", "patch");
+    "2026-02-13", "Chao Zhang", "Speeding up preprocess", "patch",
+    "2026-06-25", "Chao Zhang", "Fix buffer bug", "patch");
 
 class AlignmentParser : common::LogInfo {
     bool isFasta = false, isFastaList = false, isPhylip = false;
@@ -24,12 +25,10 @@ class AlignmentParser : common::LogInfo {
     vector<char> file_buffer;
     char NA[256] = {};
 
-    static size_t constexpr BUFFER_SIZE = 1024 * 1024;
+    static size_t constexpr BUFFER_SIZE = 1024 * 1024 * 64;
 
 public:
     AlignmentParser(string fileName, int verbose = common::LogInfo::DEFAULT_VERBOSE, string fileFormat = "auto", string seqFormat = "NA"): LogInfo(verbose), file_buffer(BUFFER_SIZE) {
-        fin.rdbuf()->pubsetbuf(file_buffer.data(), BUFFER_SIZE);
-
         ifstream ftemp(fileName);
         string temp;
         if (!getline(ftemp, temp) || temp.length() == 0) {
@@ -147,6 +146,7 @@ private:
     void initPhylip(const string& fileName) {
         isPhylip = true;
         fin.open(fileName);
+        fin.rdbuf()->pubsetbuf(file_buffer.data(), BUFFER_SIZE);
     }
 
     void initFasta(const string& fileName) {
@@ -192,6 +192,7 @@ private:
         log() << "Processing " << fileName << " ... \n";
         fin.close();
         fin.open(fileName);
+        fin.rdbuf()->pubsetbuf(file_buffer.data(), BUFFER_SIZE);
         if (!parseSeqFasta()) {
             cerr << "Error: FASTA file empty!\n";
 			throw invalid_argument("Empty FASTA file");
