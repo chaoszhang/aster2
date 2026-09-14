@@ -1,6 +1,7 @@
+#include "driver.hpp"
 #include "optimization_algorithm.hpp"
 #include "quadripartition_support.hpp"
-#include "driver.hpp"
+#include "quadripartition_support_spr44.h"//1
 
 #ifdef CASTER
 #include "caster.hpp"
@@ -52,7 +53,7 @@ int main(int argc, char* argv[]) {
 	ARG.addArgument('r', "initial-round", "integer", "Number of initial rounds of placement", 2, true, true, "8");
 	ARG.addArgument('s', "subsequent-round", "integer", "Number of subsequent rounds of placement", 2, true, true, "8");
 	ARG.addArgument('\0', "root", "string", "specify the most distant outgroup species", 3, true, false);
-	ARG.addArgument('\0', "verbose", "integer", "Verbose level", 0, true, true, "4");
+	ARG.addArgument('\0', "verbose", "integer", "Verbose level", 0, true, true, "4");//
 	ARG.addArgument('\0', "no-log", "flag", "Don't generate log file", 1, true);
 	ARG.addArgument('\0', "log", "string", "Log file path", 0, true, true, "log.txt");
 	ARG.addArgument('\0', "log-verbose", "integer", "Verbose level in log file", 0, true, true, "5");
@@ -95,21 +96,37 @@ int main(int argc, char* argv[]) {
 
 		ARG.log() << "Time after optimization: " << (std::chrono::duration_cast<std::chrono::minutes>(Clock::now() - start)).count() << " minute(s)" << std::endl;
 
-		string supportKey;
-		if constexpr(driver::ANNOTATION_READY<my_tool::Driver>) {
-			//supportKey = Driver::BranchAnnotation::template annotate<Color>(Driver::DEFAULT_SUPPORT_ANNOTATION(), stepwiseColorSharedConstData, tree, nThreads, 0);
-			supportKey = driver::annotate<my_tool::Driver, Color>(stepwiseColorSharedConstData, tree, nThreads, 0);
+		if constexpr(stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE<Color>) {
+			using SupportAlg = quadripartition_support::Procedure<quadripartition_support::ProcedureAttributes<Color> >;
+			SupportAlg::annotate({}, stepwiseColorSharedConstData, tree, nThreads, 0);
+		}
+
+		//2
+		if constexpr (stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE<Color>) {
+			using SupportAlg = quadripartition_support_spr44::ProcedureSPR44<quadripartition_support_spr44::ProcedureAttributesSPR44<Color> >;
+			SupportAlg::annotate({}, stepwiseColorSharedConstData, tree, nThreads, 0);
 		}
 
 		ARG.log() << "Time after support annotation: " << (std::chrono::duration_cast<std::chrono::minutes>(Clock::now() - start)).count() << " minute(s)" << std::endl;
 
 		if (ARG.has("output")) {
 			std::ofstream fout(ARG.get<string>("output"));
-			tree.displaySimpleNewick<double, double>(fout, supportKey, "length");
+			tree.displaySimpleNewick<double, double>(fout, "LocalBlockBootstrap", "length");
 			fout << endl;
 		}
 		else {
-			tree.displaySimpleNewick<double, double>(std::cout, supportKey, "length");
+			tree.displaySimpleNewick<double, double>(std::cout, "LocalBlockBootstrap", "length");
+			std::cout << endl;
+		}
+
+		//3
+		if (ARG.has("output")) {
+			std::ofstream fout(ARG.get<string>("output"));
+			tree.displaySimpleNewick<double, double>(fout, "SPR44BlockBootStrap", "length");
+			fout << endl;
+		}
+		else {
+			tree.displaySimpleNewick<double, double>(std::cout, "SPR44BlockBootStrap", "length");
 			std::cout << endl;
 		}
 	}, Driver::getStepwiseColorSharedConstData());
