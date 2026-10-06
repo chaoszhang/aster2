@@ -1,8 +1,7 @@
 #ifndef QUADRIPARTION_SUPPORT_HPP
 #define QUADRIPARTION_SUPPORT_HPP
 
-#include "stepwise_colorable.hpp"
-#include "nni_algorithm.hpp"
+#include "branch_annotation.hpp"
 
 namespace quadripartition_support {
 
@@ -197,60 +196,31 @@ public:
 	}
 };
 
-template<class BA, class Color> concept BRANCH_ANNOTATION = requires(std::string const& name, typename Color::SharedConstData const& data, common::AnnotatedBinaryTree & tree, size_t nThreads, int verbose) {
-	requires stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE<Color>;
-	{ BA::template shortNames<Color>() } -> std::convertible_to<std::vector<std::string> const>;
-	{ BA::template fullNames<Color>() } -> std::convertible_to<std::vector<std::string> const>;
-	{ BA::template isValid<Color>(name) } -> std::convertible_to<bool>;
-	{ BA::template annotate<Color>(name, data, tree, nThreads, verbose) } -> std::convertible_to<std::string>;
-	{ BA::template annotateAll<Color>(data, tree, nThreads, verbose) } -> std::convertible_to<std::vector<std::string> const>;
-};
-
-template<template<class> class S, template<class> class... Args> class BranchAnnotation {
+template<template<class> class S> class BranchAnnotation {
 public:
-	template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE Color> requires QUADRIPARTITION_SUPPORT<S<Color> > static std::vector<std::string> const shortNames() {
-		std::vector<std::string> res;
-		if constexpr (sizeof...(Args) > 0) res = BranchAnnotation<Args...>::template shortNames<Color>();
-		res.emplace_back(S<Color>::SHORT_NAME);
-		return res;
+	template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE Color> requires QUADRIPARTITION_SUPPORT<S<Color> > static std::string const shortName() {
+		return S<Color>::SHORT_NAME;
 	}
 
-	template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE Color> requires QUADRIPARTITION_SUPPORT<S<Color> > static std::vector<std::string> const fullNames() {
-		std::vector<std::string> res;
-		if constexpr (sizeof...(Args) > 0) res = BranchAnnotation<Args...>::template fullNames<Color>();
-		res.emplace_back(S<Color>::FULL_NAME);
-		return res;
+	template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE Color> requires QUADRIPARTITION_SUPPORT<S<Color> > static std::string const fullName() {
+		return S<Color>::FULL_NAME;
 	}
 
-	template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE Color> requires QUADRIPARTITION_SUPPORT<S<Color> > static bool const isValid(std::string const& name) {
-		if (name == S<Color>::SHORT_NAME) return true;
-		if constexpr (sizeof...(Args) > 0) {
-			return BranchAnnotation<Args...>::template isValid<Color>(name);
-		}
-		return false;
-	}
-
-	template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE Color> requires QUADRIPARTITION_SUPPORT<S<Color> > static std::string const annotate(std::string const& name, Color::SharedConstData const& data, common::AnnotatedBinaryTree& tree, size_t nThreads, int verbose) {
-		if (name == S<Color>::SHORT_NAME) {
-			Color color(data);
-			Procedure<ProcedureAttributes<Color> >::template annotate<S<Color> >(color, data, tree, nThreads, verbose);
-			return S<Color>::MAIN_KEY;
-		}
-		if constexpr (sizeof...(Args) > 0) {
-			return BranchAnnotation<Args...>::template annotate<Color>(name, data, tree, nThreads, verbose);
-		}
-		return "";
+	template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE Color> requires QUADRIPARTITION_SUPPORT<S<Color> > static std::string const annotate(Color::SharedConstData const& data, common::AnnotatedBinaryTree& tree, size_t nThreads, int verbose) {
+		Color color(data);
+		Procedure<ProcedureAttributes<Color> >::template annotate<S<Color> >(color, data, tree, nThreads, verbose);
+		return S<Color>::MAIN_KEY;
 	}
 
 	template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE Color> requires QUADRIPARTITION_SUPPORT<S<Color> > static std::vector<std::string> annotateAll(Color::SharedConstData const& data, common::AnnotatedBinaryTree& tree, size_t nThreads, int verbose) {
-		std::vector<std::string> res;
-		if constexpr (sizeof...(Args) > 0) res = BranchAnnotation<Args...>::template annotateAll<Color>(data, tree, nThreads, verbose);
 		Color color(data);
 		Procedure<ProcedureAttributes<Color> >::template annotate<S<Color> >(color, data, tree, nThreads, verbose);
-		for (string const& key : S<Color>::KEYS) res.push_back(key);
-		return res;
+		return S<Color>::KEYS;
 	}
 };
+
+using BA_QS = BranchAnnotation<QuartetScore>;
+using BA_LBB = BranchAnnotation<LocalBlockBootstrap>;
 
 };
 

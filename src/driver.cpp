@@ -1,5 +1,4 @@
 #include "optimization_algorithm.hpp"
-#include "quadripartition_support.hpp"
 #include "driver.hpp"
 
 #ifdef CASTER
@@ -14,8 +13,8 @@ namespace my_tool = astral;
 #include "sister.hpp"
 namespace my_tool = sister;
 #else
-#include "astral.hpp"
-namespace my_tool = astral;
+#include "caster.hpp"
+namespace my_tool = caster;
 #endif
 #endif
 #endif
@@ -97,7 +96,6 @@ int main(int argc, char* argv[]) {
 
 		string supportKey;
 		if constexpr(driver::ANNOTATION_READY<my_tool::Driver>) {
-			//supportKey = Driver::BranchAnnotation::template annotate<Color>(Driver::DEFAULT_SUPPORT_ANNOTATION(), stepwiseColorSharedConstData, tree, nThreads, 0);
 			supportKey = driver::annotate<my_tool::Driver, Color>(stepwiseColorSharedConstData, tree, nThreads, 0);
 		}
 

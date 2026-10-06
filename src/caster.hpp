@@ -2,6 +2,7 @@
 #define CASTER_HPP
 
 #include "stepwise_colorable.hpp"
+#include "quadripartition_support.hpp"
 #include "alignment_utilities.hpp"
 
 namespace caster{
@@ -361,7 +362,7 @@ template<bool> class Driver : public common::LogInfo
 
 public:
 	using DataClasses = std::variant<typename Color<StepwiseColorDefaultAttributes<bool, unsigned char> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<unsigned char, unsigned char> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<bool, unsigned short> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<unsigned char, unsigned short> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<unsigned short, unsigned short> >::SharedConstData>;
-	using BranchAnnotation = quadripartition_support::BranchAnnotation<quadripartition_support::QuartetScore, quadripartition_support::LocalBlockBootstrap>;
+	using BranchAnnotations = branch_annotation::BranchAnnotations<quadripartition_support::BA_QS, quadripartition_support::BA_LBB>;
 	
 	static std::string constexpr DEFAULT_SUPPORT_ANNOTATION() noexcept { return "lbb"; };
 	
@@ -379,10 +380,6 @@ public:
 		try { return DriverHelper::read<std::variant_alternative_t<2, DataClasses> >(); } catch (...) {}
 		try { return DriverHelper::read<std::variant_alternative_t<3, DataClasses> >(); } catch (...) {}
 		return DriverHelper::read<std::variant_alternative_t<4, DataClasses> >();
-	}
-
-	static std::vector<std::string> constexpr getBranchSupports() noexcept {
-		return { "qs", "bootstrap" };
 	}
 };
 
