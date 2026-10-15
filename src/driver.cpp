@@ -27,7 +27,8 @@ ChangeLog logmain("main",
 	"2026-02-01", "Chao Zhang", "Change default -r -s --subsample-min", "patch",
 	"2026-02-08", "Chao Zhang", "Add --root option", "patch",
 	"2026-02-13", "Chao Zhang", "Add time in logs", "patch",
-	"2026-03-02", "Chao Zhang", "Allowing no support for quad score undefined", "patch");
+	"2026-03-02", "Chao Zhang", "Allowing no support for quad score undefined", "patch",
+	"2026-10-15", "Chao Zhang", "Adding guide tree support", "minor");
 
 int main(int argc, char* argv[]) {
 	static_assert(driver::DRIVER<my_tool::Driver>);
@@ -48,6 +49,7 @@ int main(int argc, char* argv[]) {
 	ARG.addArgument('o', "output", "string", "Output file path, print to stdout if not provided", 5, true);
 	ARG.addArgument('t', "thread", "integer", "Number of threads", 4, true, true, "1");
 	ARG.addArgument('a', "mapping", "string", "Mapping file path, a list of gene/speicesman name to taxon name maps, each line contains one gene/speicesman name followed by one taxon name separated by a space or tab", 3, true, false);
+	ARG.addArgument('g', "guide", "string", "Newick file containing binary trees as guide trees", 2, true, false);
 	ARG.addArgument('r', "initial-round", "integer", "Number of initial rounds of placement", 2, true, true, "8");
 	ARG.addArgument('s', "subsequent-round", "integer", "Number of subsequent rounds of placement", 2, true, true, "8");
 	ARG.addArgument('\0', "root", "string", "specify the most distant outgroup species", 3, true, false);
@@ -75,11 +77,14 @@ int main(int argc, char* argv[]) {
 		size_t nRounds = ARG.get<size_t>("initial-round");
 		size_t nSubsequent = ARG.get<size_t>("subsequent-round");
 
+		std::vector<common::AnnotatedBinaryTree> guides;
+
 		ARG.log() << "#Taxa: " << nTaxa << endl;
 		ARG.log() << "#Elements: " << stepwiseColorSharedConstData.nElements() << endl;
 		ARG.log() << "#Threads: " << nThreads << endl;
 		ARG.log() << "#Initial-rounds: " << nRounds << endl;
 		ARG.log() << "#Subsequent-rounds: " << nSubsequent << endl;
+		ARG.log() << "#Guide trees: " << guides.size() << endl;
 
 		ARG.log() << "Time after parsing input: " << (std::chrono::duration_cast<std::chrono::minutes>(Clock::now() - start)).count() << " minute(s)" << std::endl;
 
@@ -88,7 +93,7 @@ int main(int argc, char* argv[]) {
 		using Alg = optimization_algorithm::Procedure<optimization_algorithm::DefaultProcedureAttributes<Color> >;
 
 		ARG.log() << "Optimiziation algorithm starts..." << endl;
-		common::AnnotatedBinaryTree tree = Alg::heuristSearch(stepwiseColorSharedConstData, nTaxa, nRounds, nSubsequent, nThreads, 0, Alg::defaultProcedure);
+		common::AnnotatedBinaryTree tree = Alg::heuristSearch(stepwiseColorSharedConstData, nTaxa, nRounds, nSubsequent, nThreads, 0, Alg::defaultProcedure, guides);
 
 		tree.displaySimpleNewick(ARG.log() << "Final tree: ") << endl;
 

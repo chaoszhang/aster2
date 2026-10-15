@@ -684,10 +684,46 @@ public:
 		return subsampleProcedure2(cdp, random, color, data, nTaxa, nTrees, nThreads, verbose);
 	}
 
-	static Tree heuristSearch(Data const& data, size_t nTaxa, size_t r, size_t s, size_t nThreads, int verbose, Tree f(ConstrainedDP&, Random&, Color&, Data const&, size_t, size_t, size_t, int)) {
+	static void addGuideTrees(ConstrainedDP& cdp, Color& color, size_t nTaxa, size_t nThreads, size_t nElements, int verbose, vector<Tree> &guides) {
+		Log const log(verbose + 1);
+		Log const vlog(verbose + 2);
+		ThreadPool threadpool(nThreads, 0, nElements);
+		for (Tree& guide : guides) {
+			Tree tree = guide.deepCopy();
+			log.log() << "Adding guide tree to the constrained DP pool:" << endl;
+			tree.displaySimpleNewick(vlog.log() << "Guide tree: ") << endl;
+			std::vector<bool> present(nTaxa, false);
+			for (Tree::Node* const leaf : tree.leaves()) {
+				size_t const iLeaf = leaf->has<size_t>(Tree::LEAF_ID) ? leaf->get<size_t>(Tree::LEAF_ID) : nTaxa;
+				if (iLeaf >= nTaxa) {
+					Log const errlog(-99);
+					errlog.log() << "Guide tree leaf has no valid LEAF_ID!" << endl;
+					tree.displaySimpleNewick(errlog.log()) << endl;
+					exit(1);
+				}
+				present[iLeaf] = true;
+			}
+			std::vector<size_t> missing;
+			for (size_t i = 0; i < nTaxa; ++i) if (!present[i]) missing.push_back(i);
+			if (!missing.empty()) {
+				log.log() << "Filling " << missing.size() << " missing taxon/taxa by recursive placement..." << endl;
+				Recursive rp(verbose + 1);
+				rp(color, threadpool, tree, missing);
+			}
+			{
+				Placement placement(color, threadpool, tree, verbose + 1);
+				score_t const sc = placement.scoreTree();
+				log.log() << "Guide tree score = " << sc << endl;
+			}
+			cdp.addTree(tree);
+		}
+	}
+
+	static Tree heuristSearch(Data const& data, size_t nTaxa, size_t r, size_t s, size_t nThreads, int verbose, Tree f(ConstrainedDP&, Random&, Color&, Data const&, size_t, size_t, size_t, int), vector<Tree> guides = {}) {
 		Random random;
 		ConstrainedDP cdp(random, nTaxa, verbose);
 		Color color(data);
+		if (!guides.empty()) addGuideTrees(cdp, color, nTaxa, nThreads, data.nElements(), verbose, guides);
 		Tree tree = f(cdp, random, color, data, nTaxa, r, nThreads, verbose + 1);
 		score_t lastScore, newScore = tree.get<score_t>(Tree::SCORE);
 		do {

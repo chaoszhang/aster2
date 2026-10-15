@@ -582,6 +582,11 @@ public:
 	static inline string const NORMALIZED_QUADRIPARTITION_SCORE = "NORMALIZED_QUADRIPARTITION_SCORE";
 	static inline string const SCORE = "SCORE";
 
+	struct BinaryCladogram {
+		BinaryCladogram *lc = nullptr, *rc = nullptr;
+		string name;
+	};
+
 	class Node : public Attributes{
 		unique_ptr<Node> lc, rc;
 		Node* p = nullptr;
@@ -839,9 +844,28 @@ private:
 		return dummy_root->lc;
 	}
 
+	static Node* buildFromCladogram(BinaryCladogram const* cladogram) {
+		Node* const node = new Node();
+		if (cladogram->lc == nullptr) {
+			node->set(LEAF_ID, taxonName2ID[cladogram->name]);
+		}
+		else {
+			node->lc.reset(buildFromCladogram(cladogram->lc));
+			node->rc.reset(buildFromCladogram(cladogram->rc));
+			node->lc->p = node;
+			node->rc->p = node;
+		}
+		return node;
+	}
+
 public:
 	template<typename... Args> requires std::constructible_from<Attributes, Args...> AnnotatedBinaryTree(Args... args) noexcept: Attributes(std::forward<Args>(args)...), dummy_root(new Node){}
 	
+	AnnotatedBinaryTree(BinaryCladogram const& cladogram) {
+		rootRef().reset(buildFromCladogram(&cladogram));
+		root()->p = dummy_root.get();
+	}
+
 	bool empty() const noexcept{ return !rootRef();}
 
 	Node* root() const noexcept{ return rootRef().get(); }
