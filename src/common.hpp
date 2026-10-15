@@ -861,7 +861,7 @@ private:
 public:
 	template<typename... Args> requires std::constructible_from<Attributes, Args...> AnnotatedBinaryTree(Args... args) noexcept: Attributes(std::forward<Args>(args)...), dummy_root(new Node){}
 	
-	AnnotatedBinaryTree(BinaryCladogram const& cladogram) {
+	AnnotatedBinaryTree(BinaryCladogram const& cladogram) : dummy_root(new Node) {
 		rootRef().reset(buildFromCladogram(&cladogram));
 		root()->p = dummy_root.get();
 	}

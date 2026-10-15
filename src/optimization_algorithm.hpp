@@ -417,7 +417,7 @@ public:
 
 		Tree operator()(Color& color, ThreadPool& threadpool, Tree& tree) {
 			Placement placement(color, threadpool, tree, p.verbose);
-			placement.log() << "Score: " << placement.scoreTree() << endl;
+			placement.log() << "Score: " <<std::setprecision(12) << placement.scoreTree() << endl;
 			Log vlog(p.verbose + 1);
 			tree.displaySimpleNewick(vlog.log()) << endl;
 			return tree;
@@ -713,7 +713,7 @@ public:
 			{
 				Placement placement(color, threadpool, tree, verbose + 1);
 				score_t const sc = placement.scoreTree();
-				log.log() << "Guide tree score = " << sc << endl;
+				log.log() << "Guide tree score = " << std::setprecision(12) << sc << endl;
 			}
 			cdp.addTree(tree);
 		}

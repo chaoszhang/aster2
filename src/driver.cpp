@@ -1,5 +1,6 @@
 #include "optimization_algorithm.hpp"
 #include "driver.hpp"
+#include "newick.hpp"
 
 #ifdef CASTER
 #include "caster.hpp"
@@ -78,6 +79,7 @@ int main(int argc, char* argv[]) {
 		size_t nSubsequent = ARG.get<size_t>("subsequent-round");
 
 		std::vector<common::AnnotatedBinaryTree> guides;
+		if (ARG.has("guide")) guides = newick::readGuideTrees(ARG.get<string>("guide"));
 
 		ARG.log() << "#Taxa: " << nTaxa << endl;
 		ARG.log() << "#Elements: " << stepwiseColorSharedConstData.nElements() << endl;
