@@ -4,6 +4,7 @@
 #include "placement_algorithm.hpp"
 #include "nni_algorithm.hpp"
 #include "constrained_dp_algorithm.hpp"
+#include "spr44.hpp"
 
 namespace optimization_algorithm {
 
@@ -46,7 +47,7 @@ ChangeLog logTwoStepPlacement("TwoStepPlacement",
 	"2026-02-05", "Chao Zhang", "Initial version", "minor",
 	"2026-02-26", "Chao Zhang", "Compatible for no NNI implementation", "patch");
 
-template<placement_algorithm::PLACEMENT_ALGORITHM PlacementAlgorithm, typename NNIAlgorithm, bool UNROOTED = true> class TwoStepPlacement : public LogInfo {
+template<placement_algorithm::PLACEMENT_ALGORITHM PlacementAlgorithm, typename NNIAlgorithm, typename SPR44Algorithm, bool UNROOTED = true> class TwoStepPlacement : public LogInfo {
 	using Tree = common::AnnotatedBinaryTree;
 
 	size_t nThreads, iElementBegin, iElementEnd;
@@ -76,6 +77,12 @@ public:
 			typename NNIAlgorithm::ThreadPool threadpool3(nThreads, iElementBegin, iElementEnd);
 			NNIAlgorithm nniAlg(color, threadpool3, backbone, verbose + 1);
 			nniAlg.performNNI();
+		}
+		if constexpr (spr44_algorithm::SPR44_ALGORITHM<SPR44Algorithm>) {
+			v2log.log() << "Applying SPR44 moves to backbone..." << endl;
+			typename SPR44Algorithm::ThreadPool threadpool3(nThreads, iElementBegin, iElementEnd);
+			SPR44Algorithm spr44Alg(color, threadpool3, backbone, verbose + 1);
+			spr44Alg.spr_place();
 		}
 		{
 			v1log.log() << "Determining the branches of placement on backbone..." << endl;
@@ -212,7 +219,9 @@ template<COLORABLE C> struct DefaultProcedureAttributes {
 	template<typename T> using Scheduler = thread_pool::SimpleScheduler<T>;
 	using Placement = placement_algorithm::StepwiseColorPlacement<placement_algorithm::StepwiseColorPlacementDefaultAttributes<Color> >;
 	template<typename T> using NNIAlgTemplate = nni_algorithm::StepwiseColorNNI<nni_algorithm::StepwiseColorNNIDefaultAttributes<T> >;
+	template<typename T> using SPR44AlgTemplate = spr44_algorithm::StepwiseColorSPR44<spr44_algorithm::StepwiseColorSPR44DefaultAttributes<T> >;
 	using NNIAlg = common::InstantiateIf<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE<Color>, NNIAlgTemplate, Color>;
+	using SPR44Alg = common::InstantiateIf<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE<Color>, SPR44AlgTemplate, Color>;
 	using Random = common::Random<std::mt19937_64>;
 	using TaxonOrder = TaxonOrderGenerator<Color, Random>;
 };
@@ -237,7 +246,8 @@ public:
 	using ThreadPool3 = thread_pool::ThreadPool<std::array<score_t, 3>, Scheduler>;
 	using Recursive = RecursivePlacement<Placement>;
 	using NNIAlg = Attributes::NNIAlg;
-	using TwoStep = TwoStepPlacement<Placement, NNIAlg>;
+	using SPR44Alg = Attributes::SPR44Alg;
+	using TwoStep = TwoStepPlacement<Placement, NNIAlg, SPR44Alg>;
 	using ConstrainedDP = constrained_dp_algorithm::ConstrainedDP<score_t, Random>;
 	static score_t constexpr ZERO = Placement::ZERO;
 	static score_t constexpr EPSILON = Color::EPSILON;
@@ -552,6 +562,64 @@ public:
 		}
 	};
 
+	struct SPR44 {
+		struct Prereq {
+			int verbose;
+
+			Prereq(int verbose) : verbose(verbose) {}
+		} p;
+
+		SPR44(Prereq const& req) : p(req) {}
+
+		Tree operator()(Color& color, ThreadPool3& threadpool, Tree& tree) {
+			SPR44Alg spr44(color, threadpool, tree, p.verbose);
+			spr44.log() << "Performing SPR44 search..." << endl;
+			spr44.spr_place();
+			Log vlog(p.verbose + 1);
+			tree.displaySimpleNewick(vlog.log()) << endl;
+			return tree;
+		}
+	};
+
+	using TP3_SPR44 = TPx_X<TP3, SPR44>;
+
+	using TP3_Sequential_SPR44 = TPx_Sequential_X<TP3, SPR44>;
+
+	static typename TP3_SPR44::Prereq prereq_TP3_SPR44(size_t nThreads, size_t iElementBegin, size_t iElementEnd, int verbose) {
+		typename TP3::Prereq tp(verbose + 1, nThreads, iElementBegin, iElementEnd);
+		typename TP3_SPR44::Prereq p(verbose, tp);
+		return p;
+	}
+
+	static typename TP3_Sequential_SPR44::Prereq prereq_TP3_Sequential_SPR44(size_t nThreads, size_t iElementBegin, size_t iElementEnd, int verbose) {
+		typename TP3::Prereq tp(verbose + 1, nThreads, iElementBegin, iElementEnd);
+		typename TP3_Sequential_SPR44::Prereq p(verbose, tp);
+		return p;
+	}
+
+	struct ST_SPR44_ST {
+		struct Prereq {
+			int verbose;
+
+			Prereq(int verbose) : verbose(verbose) {}
+		} p;
+
+		ST_SPR44_ST(Prereq const& req) : p(req) {}
+
+		std::array<Tree, 2> operator()(Color& color, ThreadPool& threadpool, Tree& tree) {
+			typename ST::Prereq stp(p.verbose);
+			typename SPR44::Prereq spr44p(p.verbose);
+			ST st(stp);
+			Tree tree3 = st(color, threadpool, tree);
+			Tree tree4 = tree3;
+			SPR44 spr44(spr44p);
+			tree4 = spr44(color, threadpool, tree4);
+			ST st2(stp);
+			tree4 = st2(color, threadpool, tree4);
+			return { tree3, tree4 };
+		}
+	};
+
 	static Tree subsampleProcedure(ConstrainedDP &cdp, Random &random, Color& color, Data const& data, size_t nTaxa, size_t nTrees, size_t nThreads, int verbose) {
 		Log::setShowThread();
 		Log log(verbose), vlog(verbose + 1);
@@ -668,7 +736,32 @@ public:
 			typename TP_ST::Prereq tp_stp = prereq_TP_ST(nThreads, 0, data.nElements(), verbose);
 			TP_ST tp_st(tp_stp);
 			Tree tree2 = tp_st(color, tree);
-			if constexpr (nni_algorithm::NNI_ALGORITHM<NNIAlg>) {
+			if constexpr (spr44_algorithm::SPR44_ALGORITHM<SPR44Alg> && nni_algorithm::NNI_ALGORITHM<NNIAlg>) {
+				score_t lastScore = 0.0, newScore = 0.0;
+				int nni_spr = 0;
+				//Tree tree6;
+				do {
+					nni_spr++;
+					lastScore = tree2.get<score_t>(Tree::SCORE);
+
+					typename TP3_NNI::Prereq tp3_nnip = prereq_TP3_NNI(nThreads, 0, data.nElements(), verbose);
+					TP3_NNI tp3_nni(tp3_nnip);
+					Tree tree3 = tp3_nni(color, tree2);
+					TP_ST tp_st2(tp_stp);
+					Tree tree4 = tp_st2(color, tree3);
+					newScore = tree4.get<score_t>(Tree::SCORE);
+
+					typename TP3_SPR44::Prereq tp3_spr44p = prereq_TP3_SPR44(nThreads, 0, data.nElements(), verbose);
+					TP3_SPR44 tp3_spr44(tp3_spr44p);
+					Tree tree5 = tp3_spr44(color, tree4);
+					TP_ST tp_st3(tp_stp);
+					Tree tree6 = tp_st3(color, tree5);
+					newScore = tree6.get<score_t>(Tree::SCORE);
+					if (newScore > lastScore + EPSILON) tree2 = tree6;
+				} while (newScore > lastScore + EPSILON && nni_spr <= 10);
+				return tree2;
+			}
+			else if constexpr (nni_algorithm::NNI_ALGORITHM<NNIAlg>) {
 				typename TP3_NNI::Prereq tp3_nnip = prereq_TP3_NNI(nThreads, 0, data.nElements(), verbose);
 				TP3_NNI tp3_nni(tp3_nnip);
 				Tree tree3 = tp3_nni(color, tree2);

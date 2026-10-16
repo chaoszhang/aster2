@@ -104,6 +104,7 @@ int main(int argc, char* argv[]) {
 		string supportKey;
 		if constexpr(driver::ANNOTATION_READY<my_tool::Driver>) {
 			supportKey = driver::annotate<my_tool::Driver, Color>(stepwiseColorSharedConstData, tree, nThreads, 0);
+			cerr << "Support annotation key: " << supportKey << endl;
 		}
 
 		ARG.log() << "Time after support annotation: " << (std::chrono::duration_cast<std::chrono::minutes>(Clock::now() - start)).count() << " minute(s)" << std::endl;

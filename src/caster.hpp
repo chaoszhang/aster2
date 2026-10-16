@@ -3,6 +3,7 @@
 
 #include "stepwise_colorable.hpp"
 #include "quadripartition_support.hpp"
+#include "quadripartition_support_spr44.hpp"
 #include "alignment_utilities.hpp"
 
 namespace caster{
@@ -362,9 +363,9 @@ template<bool> class Driver : public common::LogInfo
 
 public:
 	using DataClasses = std::variant<typename Color<StepwiseColorDefaultAttributes<bool, unsigned char> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<unsigned char, unsigned char> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<bool, unsigned short> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<unsigned char, unsigned short> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<unsigned short, unsigned short> >::SharedConstData>;
-	using BranchAnnotations = branch_annotation::BranchAnnotations<quadripartition_support::BA_QS, quadripartition_support::BA_LBB>;
+	using BranchAnnotations = branch_annotation::BranchAnnotations<quadripartition_support::BA_QS, quadripartition_support::BA_LBB, quadripartition_support_spr44::BA_SBB>;
 	
-	static std::string constexpr DEFAULT_SUPPORT_ANNOTATION() noexcept { return "lbb"; };
+	static std::string constexpr DEFAULT_SUPPORT_ANNOTATION() noexcept { return "sbb"; };
 	
 	static std::pair<string, string> programNames() noexcept {
 		return { "caster", "Coalescence-aware Alignment-based Species Tree EstimatoR" };
