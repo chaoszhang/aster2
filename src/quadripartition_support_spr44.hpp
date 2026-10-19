@@ -19,7 +19,8 @@ namespace quadripartition_support_spr44 {
 	using std::shared_ptr;
 
 	ChangeLog logQuadripartitionSupportSPR("logQuadripartitionSupportSPR",
-		"2026-10-16", "Yujie Wang", "add quardripartition support for spr", "minor");
+		"2026-10-16", "Yujie Wang", "add quardripartition support for spr", "minor",
+		"2026-10-19", "Chao Zhang", "memory efficiency improvements by DeepSeek", "patch");
 
 	template<typename Support> concept QUADRIPARTITION_SUPPORT_SPR44 = requires(typename Support::Color & color, Support const& support, common::AnnotatedBinaryTree::Node * node, size_t index, common::Random<std::mt19937_64>&random)
 	{
@@ -100,13 +101,17 @@ namespace quadripartition_support_spr44 {
 		}
 
 		static void annotate(common::AnnotatedBinaryTree::Node* node, SPR44BlockBootstrap const& left, SPR44BlockBootstrap const& right, SPR44BlockBootstrap const& outgroup, string key1) noexcept {
-			using place44_map = std::map<string, std::array<typename Color::score_t, 3>>;
-			if (!node->has("place44_of_node")) {
-				shared_ptr<place44_map> place44_map_ptr(new place44_map{});
-				node->set("place44_of_node", place44_map_ptr);
+			// ---- EVAL FIX (M1) ----------------------------------------------------
+			// 旧实现：每个节点挂一个 std::map<std::string, array<double,3>>，键为
+			// "PLACE44<切割号><bootstrap 号>"，于是条目数 = 切割数 × 节点数 × N_BOOTSTRAPS
+			// （n=201、1000 次 bootstrap 时 1.6e8 条 ≈ 21 GB，且从不释放）。
+			// 新实现：每个节点一份按 bootstrap 下标索引的定长数组，切割之间复用/覆盖；
+			// 切割内部的消费（markCutForBootstrap）在同一切割着色后立即完成。
+			auto& values = spr44_algorithm::bootstrapValues<typename Color::score_t>(node);
+			if (values.size() != N_BOOTSTRAPS) {
+				values.assign(N_BOOTSTRAPS, std::array<typename Color::score_t, 3>{ 0, 0, 0 });
 			}
-			place44_map& element_of_map = *(node->get<std::shared_ptr<place44_map> >("place44_of_node"));
-
+			(void)key1;
 			for (size_t iBootstrap : std::views::iota((size_t)0, N_BOOTSTRAPS)) {
 				typename Color::score_t s0 = 0, s1 = 0, s2 = 0;
 				for (size_t iBlock : bootstrapSPR44[iBootstrap]) {
@@ -114,9 +119,7 @@ namespace quadripartition_support_spr44 {
 					s1 += right.scores[iBlock].second;
 					s2 += outgroup.scores[iBlock].second;
 				}
-				std::string key = key1 + std::to_string(iBootstrap);
-				std::array<typename Color::score_t, 3> score_arr = { s0, s1, s2 };
-				element_of_map[key] = score_arr;
+				values[iBootstrap] = { s0, s1, s2 };
 			}
 		}
 	};

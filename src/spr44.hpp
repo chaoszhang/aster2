@@ -24,7 +24,8 @@ namespace spr44_algorithm {
 	using std::shared_ptr;
 
 	ChangeLog logSPR("logSPR",
-		"2026-10-16", "Yujie Wang", "add spr", "minor");
+		"2026-10-16", "Yujie Wang", "add spr", "minor",
+		"2026-10-19", "Chao Zhang", "memory efficiency improvements by DeepSeek", "patch");
 
 	template<class T> concept QUADRIPARTITION_SCORE_ALGORITHM = requires(T t, typename T::Color & color, typename T::ThreadPool & threadPool, common::AnnotatedBinaryTree & tree, std::size_t index, typename T::score_t score, void annotator(common::AnnotatedBinaryTree::Node*, typename T::score_t, typename T::score_t, typename T::score_t), int verbose) {
 		requires std::derived_from<T, common::LogInfo>;
@@ -79,6 +80,27 @@ namespace spr44_algorithm {
 	};
 
 
+	// ---- EVAL FIX (M1) ---------------------------------------------------------
+	// 旧实现把每个 (切割, 节点, bootstrap) 的三元组分数以 "PLACE44<cut><boot>" 为键
+	// 塞进树节点的 std::map<std::string, array<score_t,3>>，条目数 = 切割数 × 节点数 ×
+	// N_BOOTSTRAPS（n=201 时约 1.6e8 条 ≈ 21 GB），且永不释放。
+	// 新实现：每个节点一份定长 vector<array<score_t,3>>，按 bootstrap 下标直接寻址；
+	// 一个切割着色完成后立刻消费它的全部 bootstrap，下一个切割覆盖同一份内存。
+	static inline std::string const BOOTSTRAP_VALUES_ATTR = "spr44_bootstrap_values";
+	// 必须与 SPR44BlockBootstrap<Color>::MAIN_KEY 一致（见 quadripartition_support_spr44.hpp）
+	static inline std::string const BOOTSTRAP_SUPPORT_KEY = "SPR44BlockBootstrap";
+
+	template<typename score_t> using BootstrapValues = vector<std::array<score_t, 3> >;
+
+	template<typename score_t>
+	BootstrapValues<score_t>& bootstrapValues(common::AnnotatedBinaryTree::Node* node) {
+		using BV = BootstrapValues<score_t>;
+		if (!node->has<std::shared_ptr<BV> >(BOOTSTRAP_VALUES_ATTR)) {
+			node->set(BOOTSTRAP_VALUES_ATTR, std::make_shared<BV>());
+		}
+		return *node->get<std::shared_ptr<BV> >(BOOTSTRAP_VALUES_ATTR);
+	}
+
 	template<STEPWISE_COLOR_QUADRIPARTITION_SCORE_ATTRIBUTES Attributes> class StepwiseColorQuadripartitionScore_SPR44 : public common::LogInfo {
 	public:
 		using Color = Attributes::Color;
@@ -98,6 +120,14 @@ namespace spr44_algorithm {
 		thread_pool::Instruction<array<score_t, 3> > instr;
 		std::queue<array<score_t, 3> > results;
 		std::unordered_map<Tree::Node*, size_t> leafId;
+
+		// ---- EVAL FIX (M1): 注释路径的稠密状态（按节点编号索引，不写节点属性）----
+		size_t nBootstraps = 0;
+		size_t wordsPerNode = 0;
+		vector<Tree::Node*> allNodes;
+		std::unordered_map<Tree::Node*, size_t> nodeDenseId;
+		vector<char> sprPrune, sprEnd, sprNum;
+		vector<unsigned long long> markedBits; // allNodes.size() * wordsPerNode
 
 		void setColor(vector<size_t> const& leaves, size_t iColor) noexcept {
 			Color& localStepwiseColor = stepwiseColor;
@@ -343,6 +373,12 @@ namespace spr44_algorithm {
 				node_to_num.clear();
 				num_to_node.clear();
 				depth.clear();
+				allNodes.clear();
+				nodeDenseId.clear();
+			}
+			if (!nodeDenseId.contains(node)) {
+				nodeDenseId[node] = allNodes.size();
+				allNodes.push_back(node);
 			}
 			node_euler.push_back(node);
 			depth.push_back(dep);
@@ -448,125 +484,119 @@ namespace spr44_algorithm {
 		}
 
 	protected:
-		void set_end_num(Tree::Node* node) {
-			node->set("spr_end", false);
-			node->set("spr_num", false);
+		// ---- EVAL FIX (M1): 注释路径的支撑度计算 -------------------------------
+		// 旧的实现：single_iBootstrap_support 用 "PLACE44<cut><boot>" / "PlaceAns<cut><boot>"
+		// 字符串键在节点属性 map 里存取；final_support 在每个 bootstrap 上把所有切割重走一遍。
+		// 新实现：切割外层、bootstrap 内层（同一份着色结果被复用），支撑度用
+		// "每节点 × 每 bootstrap 一位" 的 bitset 累积，最后一次性算百分比。
+		void initBootstrapState(size_t nBootstrap) {
+			nBootstraps = nBootstrap;
+			wordsPerNode = (nBootstraps + 63) / 64;
+			size_t const n = allNodes.size();
+			sprPrune.assign(n, 0);
+			sprEnd.assign(n, 0);
+			sprNum.assign(n, 0);
+			markedBits.assign(n * wordsPerNode, 0ULL);
+			for (Tree::Node* node : allNodes) {
+				bootstrapValues<typename Color::score_t>(node).assign(nBootstraps, std::array<typename Color::score_t, 3>{ Color::ZERO, Color::ZERO, Color::ZERO });
+			}
+			RMQ();
+		}
+
+		void syncPruneDense(Tree::Node* node) {
+			sprPrune[nodeDenseId[node]] = node->get<bool>("spr_prune") ? 1 : 0;
 			if (node->isLeaf()) return;
-			set_end_num(node->leftChild());
-			set_end_num(node->rightChild());
-			return;
+			syncPruneDense(node->leftChild());
+			syncPruneDense(node->rightChild());
 		}
 
 		void get_num(Tree::Node* node) {
-			if (!node->get<bool>("spr_end") && !node->isRoot()) {
-				node->set("spr_num", true);
-				get_num(node->parent());
+			while (!sprEnd[nodeDenseId[node]] && !node->isRoot()) {
+				sprNum[nodeDenseId[node]] = 1;
+				node = node->parent();
 			}
-			return;
 		}
 
-		void single_iBootstrap_support(Tree::Node* node, Tree::Node* treeSlice, size_t iBootstrap) noexcept {
-			using score_t = typename Color::score_t;
-			string key1 = "PLACE44" + std::to_string(node_to_num[treeSlice]) + std::to_string(iBootstrap);
-			string key2 = "PlaceAns" + std::to_string(node_to_num[treeSlice]) + std::to_string(iBootstrap);
+		// 放置得分只依赖父节点的得分与父节点的 (s0,s1,s2)，所以沿递归传给子节点即可，无需存储。
+		void collectPlaceans(Tree::Node* node, typename Color::score_t parentScore, array<typename Color::score_t, 3> const& parentVals, int flag, size_t iBootstrap) {
+			typename Color::score_t dp = Color::ZERO;
+			if (!node->isRoot()) dp = parentScore - parentVals[2] + parentVals[(flag == 1) ? 0 : 1];
+			ans.push_back({ dp, node });
+			if (!node->isLeaf() && !sprPrune[nodeDenseId[node]]) {
+				array<typename Color::score_t, 3> const& myVals = bootstrapValues<typename Color::score_t>(node)[iBootstrap];
+				collectPlaceans(node->leftChild(), dp, myVals, 1, iBootstrap);
+				collectPlaceans(node->rightChild(), dp, myVals, 0, iBootstrap);
+			}
+		}
 
-			setPrune(node);
-			treeSlice->set("spr_prune", true);
-
+		// 单个 (切割, bootstrap)：求每节点放置得分，按原逻辑标记，再把标记 OR 进 bitset。
+		void markCutForBootstrap(Tree::Node* treeSlice, size_t iBootstrap) {
+			std::fill(sprNum.begin(), sprNum.end(), (char)0);
+			std::fill(sprEnd.begin(), sprEnd.end(), (char)0);
 			ans.clear();
-			ans = optimalPlacementSubtree<false>(node, -1, key1, key2);
-
-			typename Color::score_t standard_ans = 0.0;
-			for (int i = 0; i < ans.size(); i++) {
-				Tree::Node* node_i = get<1>(ans[i]);
-				if (node_i->get<bool>("spr_prune")) {
-					standard_ans = get<0>(ans[i]);
-					break;
+			array<typename Color::score_t, 3> const zero = { Color::ZERO, Color::ZERO, Color::ZERO };
+			collectPlaceans(tree.root(), Color::ZERO, zero, -1, iBootstrap);
+			typename Color::score_t standard = Color::ZERO;
+			for (auto const& [s, nd] : ans) {
+				if (sprPrune[nodeDenseId[nd]]) { standard = s; break; }
+			}
+			for (auto const& [s, nd] : ans) {
+				if (sprPrune[nodeDenseId[nd]]) continue;
+				if (s >= standard + Color::EPSILON) {
+					Tree::Node* const lca = getlca(treeSlice, nd);
+					sprEnd[nodeDenseId[lca]] = 1;
+					if (!treeSlice->isRoot()) get_num(treeSlice->parent());
+					if (!sprEnd[nodeDenseId[treeSlice->parent()]]) sprNum[nodeDenseId[treeSlice]] = 1;
+					if (!nd->isRoot()) get_num(nd);
+					sprEnd[nodeDenseId[lca]] = 0;
 				}
 			}
-
-			//bootstrap
-			for (int i = 0; i < ans.size(); i++) {
-				Tree::Node* node_i = get<1>(ans[i]);
-				if (node_i->get<bool>("spr_prune")) continue;
-				if (get<0>(ans[i]) >= standard_ans + Color::EPSILON) {
-					Tree::Node* node_regraft = get<1>(ans[i]);
-					Tree::Node* lca = getlca(treeSlice, node_regraft);
-					lca->set("spr_end", true);
-					if (!treeSlice->isRoot()) {
-						get_num(treeSlice->parent());
-					}
-					//calculate the pruned
-					if (!treeSlice->parent()->get<bool>("spr_end")) {
-						treeSlice->set("spr_num", true);
-					}
-					//
-					if (!node_regraft->isRoot()) {
-						get_num(node_regraft);
-					}
-					lca->set("spr_end", false);
-				}
+			unsigned long long const mask = 1ULL << (iBootstrap % 64);
+			size_t const word = iBootstrap / 64;
+			for (size_t i = 0; i < allNodes.size(); ++i) {
+				if (sprNum[i]) markedBits[i * wordsPerNode + word] |= mask;
 			}
-
-			if (treeSlice->isLeaf()) return;
-			single_iBootstrap_support(node, treeSlice->leftChild(), iBootstrap);
-			single_iBootstrap_support(node, treeSlice->rightChild(), iBootstrap);
-			return;
 		}
 
-	protected:
-		void change_bool_to_int(Tree::Node* node) {
-			if (!node->get<bool>("spr_num")) {
-				if (node->has("SPR44BlockBootstrap")) {
-					int cnt = node->get<int>("SPR44BlockBootstrap");
-					cnt++;
-					node->set("SPR44BlockBootstrap", cnt);
-				}
-				else node->set("SPR44BlockBootstrap", 1);
+		// 一个切割：着色一次 -> 立刻把该切割的所有 bootstrap 消费掉。
+		void annotateCuts(Tree::Node* treeSlice, void annotator(Tree::Node*, score_t, score_t, score_t, string)) {
+			setPrune(tree.root());
+			treeSlice->set("spr_prune", true);
+			syncPruneDense(tree.root());
+			{
+				vector<Tree::Node*> sliceLeaves;
+				treeSlice->subtreeLeaves(sliceLeaves);
+				colorTree<false>(annotator, sliceLeaves, string());
 			}
-			else {
-				if (!node->has("SPR44BlockBootstrap")) {
-					node->set("SPR44BlockBootstrap", 0);
-				}
+			for (size_t iBootstrap = 0; iBootstrap < nBootstraps; ++iBootstrap) {
+				markCutForBootstrap(treeSlice, iBootstrap);
 			}
-			if (node->isLeaf()) return;
-			change_bool_to_int(node->leftChild());
-			change_bool_to_int(node->rightChild());
-			return;
+			treeSlice->set("spr_prune", false);
+			if (!treeSlice->isLeaf()) {
+				annotateCuts(treeSlice->leftChild(), annotator);
+				annotateCuts(treeSlice->rightChild(), annotator);
+			}
 		}
 
-		void final_support_normalized(Tree::Node* node, size_t N_BOOTSTRAPS) {
-			if (node->has<int>("SPR44BlockBootstrap")) {
-				int cnt = node->get<int>("SPR44BlockBootstrap");
-				node->set("SPR44BlockBootstrap", (double)cnt * 100 / N_BOOTSTRAPS);
+		void finishBootstrapSupport(size_t nBootstrap) {
+			for (size_t i = 0; i < allNodes.size(); ++i) {
+				size_t cnt = 0;
+				for (size_t b = 0; b < nBootstraps; ++b) {
+					if (((markedBits[i * wordsPerNode + b / 64] >> (b % 64)) & 1ULL) == 0) cnt++;
+				}
+				double const value = (nBootstrap == 0) ? 0.0 : (double)cnt * 100.0 / (double)nBootstrap;
+				allNodes[i]->set(BOOTSTRAP_SUPPORT_KEY, value);
 			}
-			else node->set("SPR44BlockBootstrap", 0);
-			if (node->isLeaf()) return;
-			final_support_normalized(node->leftChild(), N_BOOTSTRAPS);
-			final_support_normalized(node->rightChild(), N_BOOTSTRAPS);
-			return;
-		}
-
-		void final_support(common::AnnotatedBinaryTree::Node* node, size_t N_BOOTSTRAPS) {
-			for (size_t iBootstrap : std::views::iota((size_t)0, N_BOOTSTRAPS)) {
-				set_end_num(node);
-				single_iBootstrap_support(node, node->leftChild(), iBootstrap);
-				single_iBootstrap_support(node, node->rightChild(), iBootstrap);
-				change_bool_to_int(node);
-			}
-			final_support_normalized(node, N_BOOTSTRAPS);
-			return;
 		}
 
 	protected:
 		//得到每个切割方式最好的重接方式后进行不同切割方式的比较
 		template<bool SPR44> tuple<score_t, Tree::Node*, Tree::Node*, bool> optimalSpr44(void annotator(Tree::Node*, score_t, score_t, score_t, string), size_t N_BOOTSTRAPS) noexcept {
 			dfs(tree.root(), 0, 0);
-			final_ans.clear();
-			final_ans = regraft<SPR44>(tree, tree.root()->leftChild(), annotator);
-			final_ans = regraft<SPR44>(tree, tree.root()->rightChild(), annotator);
-
 			if constexpr (SPR44) {
+				final_ans.clear();
+				final_ans = regraft<SPR44>(tree, tree.root()->leftChild(), annotator);
+				final_ans = regraft<SPR44>(tree, tree.root()->rightChild(), annotator);
 				auto it = std::max_element(
 					final_ans.begin(),
 					final_ans.end(),
@@ -577,8 +607,11 @@ namespace spr44_algorithm {
 				return *it;
 			}
 			else {
-				RMQ();
-				final_support(tree.root(), N_BOOTSTRAPS);
+				// EVAL FIX (M1): 切割外层 + bootstrap 内层，内存与数据集大小无关
+				initBootstrapState(N_BOOTSTRAPS);
+				annotateCuts(tree.root()->leftChild(), annotator);
+				annotateCuts(tree.root()->rightChild(), annotator);
+				finishBootstrapSupport(N_BOOTSTRAPS);
 			}
 			return {};
 		}
