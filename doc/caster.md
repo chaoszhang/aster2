@@ -212,6 +212,21 @@ bin/caster --root YOUR_OUTGROUP INPUT_FILE
 ```
 
 # CHANGE LOG
+v2.5.1 - 2026-10-19:
+  * logQuadripartitionSupportSPR: Chao Zhang - memory efficiency improvements by DeepSeek
+  * logSPR: Chao Zhang - memory efficiency improvements by DeepSeek
+
+v2.5.0 - 2026-10-16:
+  * logQuadripartitionSupportSPR: Yujie Wang - add quardripartition support for spr
+  * logSPR: Yujie Wang - add spr
+
+v2.4.0 - 2026-10-15:
+  * Newick: Chao Zhang - AI generated Newick parser, printing error messages when throwing exceptions
+  * main: Chao Zhang - Adding guide tree support
+
+v2.3.12 - 2026-10-06:
+  * BranchAnnotations: Chao Zhang - Refactoring
+
 v2.3.11 - 2026-09-03:
   * QUADRIPARTITION_SUPPORT_POSTPROCESS: Chao Zhang - Supporting post-processing
   * BRANCH_SUPPORT: Chao Zhang - Compatible for support annotation
@@ -233,9 +248,9 @@ v2.3.7 - 2026-03-02:
 
 v2.3.6 - 2026-02-26:
   * optimization_algorithm::Procedure: Chao Zhang - Compatible for no NNI implementation
+  * StepwiseColorPlacement: Chao Zhang - Supporting elementClearAndSetTaxonColor
   * TwoStepPlacement: Chao Zhang - Compatible for no NNI implementation
   * StepwiseColorQuadripartitionScore: Chao Zhang - Supporting elementClearAndSetTaxonColor & setQuadripartitionMode
-  * StepwiseColorPlacement: Chao Zhang - Supporting elementClearAndSetTaxonColor
 
 v2.3.5 - 2026-02-25:
   * ChangeLog: Chao Zhang - Fix formating
@@ -244,8 +259,8 @@ v2.3.4 - 2026-02-24:
   * InputParser: Chao Zhang - Add printing documentation function
 
 v2.3.3 - 2026-02-13:
-  * main: Chao Zhang - Add time in logs
   * AlignmentParser: Chao Zhang - Speeding up preprocess
+  * main: Chao Zhang - Add time in logs
   * optimization_algorithm::Procedure: Chao Zhang - Switch to sequential subsample
 
 v2.3.2 - 2026-02-12:
@@ -262,25 +277,25 @@ v2.2.0 - 2026-02-05:
   * TwoStepPlacement: Chao Zhang - Initial version
 
 v2.1.1 - 2026-02-04:
-  * StepwiseColorQuadripartitionScore: Chao Zhang - Fix interface for computing support
   * DriverHelper: Chao Zhang - Little code refactoring, no functional change
+  * StepwiseColorQuadripartitionScore: Chao Zhang - Fix interface for computing support
 
 v2.1.0 - 2026-02-02:
   * ChangeLog: Chao Zhang - Make helper function to constructor
-  * Color: Chao Zhang - Supporting quadripartiton
-  * StepwiseColorNNI: Chao Zhang - Initial code
-  * StepwiseColorQuadripartitionScore: Chao Zhang - Initial code
-  * StepwiseColorPlacement: Chao Zhang - Refactoring for conciseness
-  * QUADRIPARTITION_STEPWISE_COLORABLE: Chao Zhang - Supporting quadripartiton
   * AnnotatedBinaryTree: Chao Zhang - Bug fix in prune above and implementation of deep copy
+  * Color: Chao Zhang - Supporting quadripartiton
+  * QUADRIPARTITION_STEPWISE_COLORABLE: Chao Zhang - Supporting quadripartiton
+  * StepwiseColorNNI: Chao Zhang - Initial code
+  * StepwiseColorPlacement: Chao Zhang - Refactoring for conciseness
+  * StepwiseColorQuadripartitionScore: Chao Zhang - Initial code
 
 v2.0.1 - 2026-02-01:
-  * ChangeLog: Chao Zhang - Save date of last update
   * main: Chao Zhang - Change default -r -s --subsample-min
   * Driver: Chao Zhang - Change programName to caster
   * InputParser: Chao Zhang - Display date of latest update
   * InputParser: Chao Zhang - Exit in name conflict and ensure shortcut format
   * AnnotatedBinaryTree: Chao Zhang - Add NNI and make left heavy
+  * ChangeLog: Chao Zhang - Save date of last update
 
 
 
