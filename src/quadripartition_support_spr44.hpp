@@ -33,7 +33,7 @@ namespace quadripartition_support_spr44 {
 	{ Support::KEYS } noexcept -> std::convertible_to<vector<string> const>;
 	{ Support::map(color, index) } noexcept -> std::convertible_to<array<Support, 3> >;
 	{ Support::reduce(support, support) } noexcept -> std::convertible_to<Support>;
-	{ Support::annotate(node, support, support, support, string()) } noexcept;
+	{ Support::annotate(node, support, support, support) } noexcept;
 	};
 
 	template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE C> class SPR44BlockBootstrap : public common::LogInfo {
@@ -100,18 +100,11 @@ namespace quadripartition_support_spr44 {
 			return res;
 		}
 
-		static void annotate(common::AnnotatedBinaryTree::Node* node, SPR44BlockBootstrap const& left, SPR44BlockBootstrap const& right, SPR44BlockBootstrap const& outgroup, string key1) noexcept {
-			// ---- EVAL FIX (M1) ----------------------------------------------------
-			// 旧实现：每个节点挂一个 std::map<std::string, array<double,3>>，键为
-			// "PLACE44<切割号><bootstrap 号>"，于是条目数 = 切割数 × 节点数 × N_BOOTSTRAPS
-			// （n=201、1000 次 bootstrap 时 1.6e8 条 ≈ 21 GB，且从不释放）。
-			// 新实现：每个节点一份按 bootstrap 下标索引的定长数组，切割之间复用/覆盖；
-			// 切割内部的消费（markCutForBootstrap）在同一切割着色后立即完成。
+		static void annotate(common::AnnotatedBinaryTree::Node* node, SPR44BlockBootstrap const& left, SPR44BlockBootstrap const& right, SPR44BlockBootstrap const& outgroup) noexcept {
 			auto& values = spr44_algorithm::bootstrapValues<typename Color::score_t>(node);
 			if (values.size() != N_BOOTSTRAPS) {
 				values.assign(N_BOOTSTRAPS, std::array<typename Color::score_t, 3>{ 0, 0, 0 });
 			}
-			(void)key1;
 			for (size_t iBootstrap : std::views::iota((size_t)0, N_BOOTSTRAPS)) {
 				typename Color::score_t s0 = 0, s1 = 0, s2 = 0;
 				for (size_t iBlock : bootstrapSPR44[iBootstrap]) {
