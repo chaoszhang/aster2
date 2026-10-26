@@ -65,6 +65,9 @@ namespace quadripartition_support_spr44 {
 					bootstrapSPR44.back().emplace_back(uniform(random.generator));
 				}
 			}
+			// 供 spr44 侧按块展开使用：常驻内存只与 N_BLOCKS 有关
+			spr44_algorithm::bootstrapNBlocks = N_BLOCKS;
+			spr44_algorithm::bootstrapBlockIndex.assign(bootstrapSPR44.begin(), bootstrapSPR44.begin() + std::min(bootstrapSPR44.size(), N_BOOTSTRAPS));
 		}
 
 		SPR44BlockBootstrap() {
@@ -100,19 +103,22 @@ namespace quadripartition_support_spr44 {
 			return res;
 		}
 
+		// 取某个块的分数：scores 可能是"50 块全量"或"单块稀疏"两种形态
+		static score_t blockValue(SPR44BlockBootstrap const& x, size_t iBlock) noexcept {
+			if (x.scores.size() == N_BLOCKS) return x.scores[iBlock].second;
+			if (x.scores.size() == 1) return (x.scores[0].first == iBlock) ? x.scores[0].second : score_t(0);
+			return score_t(0);
+		}
+
 		static void annotate(common::AnnotatedBinaryTree::Node* node, SPR44BlockBootstrap const& left, SPR44BlockBootstrap const& right, SPR44BlockBootstrap const& outgroup) noexcept {
 			auto& values = spr44_algorithm::bootstrapValues<typename Color::score_t>(node);
-			if (values.size() != N_BOOTSTRAPS) {
-				values.assign(N_BOOTSTRAPS, std::array<typename Color::score_t, 3>{ 0, 0, 0 });
+			if (values.size() != N_BLOCKS) {
+				values.assign(N_BLOCKS, std::array<typename Color::score_t, 3>{ 0, 0, 0 });
 			}
-			for (size_t iBootstrap : std::views::iota((size_t)0, N_BOOTSTRAPS)) {
-				typename Color::score_t s0 = 0, s1 = 0, s2 = 0;
-				for (size_t iBlock : bootstrapSPR44[iBootstrap]) {
-					s0 += left.scores[iBlock].second;
-					s1 += right.scores[iBlock].second;
-					s2 += outgroup.scores[iBlock].second;
-				}
-				values[iBootstrap] = { s0, s1, s2 };
+			// 只存"每块"的三元组：N_BLOCKS 份而不是 N_BOOTSTRAPS 份。
+			// replicate 的组合方式由 spr44 侧用 bootstrapBlockIndex 现算。
+			for (size_t iBlock : std::views::iota((size_t)0, N_BLOCKS)) {
+				values[iBlock] = { blockValue(left, iBlock), blockValue(right, iBlock), blockValue(outgroup, iBlock) };
 			}
 		}
 	};

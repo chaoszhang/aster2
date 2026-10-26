@@ -93,14 +93,21 @@ namespace spr44_algorithm {
 		return *node->get<std::shared_ptr<BV> >(BOOTSTRAP_VALUES_ATTR);
 	}
 
+	// ---- 内存优化：支持度按"块"存储，而不是按"replicate"存储 ----------------
+	// N_BLOCKS(50) 个块的 (s0,s1,s2) 足以表达全部 N_BOOTSTRAPS(1000) 个 replicate
+	// （每个 replicate = 50 次有放回抽样），常驻内存因此从 O(N_BOOTSTRAPS * nTaxa)
+	// 降到 O(N_BLOCKS * nTaxa)。bootstrapBlockIndex 由 Support::staticInitialize 填充。
+	inline std::vector<std::vector<size_t> > bootstrapBlockIndex = {};
+	inline size_t bootstrapNBlocks = 0;
+
 	template<STEPWISE_COLOR_QUADRIPARTITION_SCORE_ATTRIBUTES Attributes> class StepwiseColorQuadripartitionScore_SPR44 : public common::LogInfo {
 	public:
 		using Color = Attributes::Color;
 		using score_t = Attributes::score_t;
 		using ThreadPool = thread_pool::ThreadPool<array<score_t, 3>, Attributes::template Scheduler>;
 		using Tree = common::AnnotatedBinaryTree;
-		static inline string const PLACE44 = "PLACE44"; 
-		static inline string const PlaceAns = "PlaceAns"; 
+		static inline string const PLACE44 = "PLACE44";
+		static inline string const PlaceAns = "PlaceAns";
 		static inline string const LEAF_ID = Tree::LEAF_ID;
 		static inline score_t const ZERO = Attributes::ZERO;
 		static inline bool const IS_ROOTED = Color::IS_ROOTED;
@@ -208,7 +215,7 @@ namespace spr44_algorithm {
 			array<score_t, 3> Scores = { ZERO, ZERO, ZERO };
 			Scores = getComputedScore();
 			auto [left, right, outgroup] = Scores;
-			if constexpr (SPR44) node->set(PLACE44, Scores); 
+			if constexpr (SPR44) node->set(PLACE44, Scores);
 			annotator(node, left, right, outgroup);
 			return;
 		}
@@ -428,6 +435,8 @@ namespace spr44_algorithm {
 
 	protected:
 		vector<pair<typename Color::score_t, Tree::Node*> > ans_root = {};
+		// 当前 replicate 下每个节点的 (s0,s1,s2)，由块值展开而来（复用同一块内存）
+		vector<array<typename Color::score_t, 3> > replicateValues = {};
 		void initBootstrapState(size_t nBootstrap) {
 			nBootstraps = nBootstrap;
 			wordsPerNode = (nBootstraps + 63) / 64;
@@ -436,9 +445,11 @@ namespace spr44_algorithm {
 			sprEnd.assign(n, 0);
 			sprNum.assign(n, 0);
 			markedBits.assign(n * wordsPerNode, 0ULL);
+			size_t const nBlocks = bootstrapNBlocks ? bootstrapNBlocks : nBootstraps;
 			for (Tree::Node* node : allNodes) {
-				bootstrapValues<typename Color::score_t>(node).assign(nBootstraps, std::array<typename Color::score_t, 3>{ Color::ZERO, Color::ZERO, Color::ZERO });
+				bootstrapValues<typename Color::score_t>(node).assign(nBlocks, std::array<typename Color::score_t, 3>{ Color::ZERO, Color::ZERO, Color::ZERO });
 			}
+			replicateValues.assign(n, std::array<typename Color::score_t, 3>{ Color::ZERO, Color::ZERO, Color::ZERO });
 			RMQ();
 		}
 
@@ -465,12 +476,27 @@ namespace spr44_algorithm {
 			}
 		}
 
+		// 把"每节点 50 个块值"按当前 replicate 的抽样（有放回）累加成一份 (s0,s1,s2)
+		void buildReplicateValues(size_t iBootstrap) noexcept {
+			static std::vector<size_t> const noBlocks = {};
+			auto const& blocks = (iBootstrap < bootstrapBlockIndex.size()) ? bootstrapBlockIndex[iBootstrap] : noBlocks;
+			for (size_t i = 0; i < allNodes.size(); ++i) {
+				auto const& bv = bootstrapValues<typename Color::score_t>(allNodes[i]);
+				typename Color::score_t a0 = Color::ZERO, a1 = Color::ZERO, a2 = Color::ZERO;
+				for (size_t iBlock : blocks) {
+					if (iBlock >= bv.size()) continue;
+					a0 += bv[iBlock][0]; a1 += bv[iBlock][1]; a2 += bv[iBlock][2];
+				}
+				replicateValues[i] = { a0, a1, a2 };
+			}
+		}
+
 		void collectPlaceans(Tree::Node* node, typename Color::score_t parentScore, array<typename Color::score_t, 3> const& parentVals, int flag, size_t iBootstrap) {
 			typename Color::score_t dp = Color::ZERO;
 			if (!node->isRoot()) dp = parentScore - parentVals[2] + parentVals[(flag == 1) ? 0 : 1];
 			ans_root.push_back({ dp, node });
 			if (!node->isLeaf() && !sprPrune[nodeDenseId[node]]) {
-				array<typename Color::score_t, 3> const& myVals = bootstrapValues<typename Color::score_t>(node)[iBootstrap];
+				array<typename Color::score_t, 3> const& myVals = replicateValues[nodeDenseId[node]];
 				collectPlaceans(node->leftChild(), dp, myVals, 1, iBootstrap);
 				collectPlaceans(node->rightChild(), dp, myVals, 0, iBootstrap);
 			}
@@ -480,6 +506,7 @@ namespace spr44_algorithm {
 			std::fill(sprNum.begin(), sprNum.end(), (char)0);
 			std::fill(sprEnd.begin(), sprEnd.end(), (char)0);
 			ans_root.clear();
+			buildReplicateValues(iBootstrap);
 			array<typename Color::score_t, 3> const zero = { Color::ZERO, Color::ZERO, Color::ZERO };
 			collectPlaceans(tree.root(), Color::ZERO, zero, -1, iBootstrap);
 			typename Color::score_t standard = Color::ZERO;

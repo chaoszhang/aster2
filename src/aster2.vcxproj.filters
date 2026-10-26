@@ -74,5 +74,14 @@
     <ClInclude Include="astral.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="newick.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="spr44.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="quadripartition_support_spr44.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
