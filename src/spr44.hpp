@@ -510,9 +510,21 @@ namespace spr44_algorithm {
 			syncPruneDense(node->rightChild());
 		}
 
+		// 平凡 split <=> 某一侧只有 1 个分类群：
+		//   (a) node 自己是叶子；(b) node 的父是根且兄弟是单叶。
+		// 这类 split 在任何二叉树上都存在，任何 SPR 都不可能消灭它。
+		static bool isTrivialSplit(Tree::Node* node) noexcept {
+			if (node->isLeaf()) return true;
+			Tree::Node* p = node->parent();
+			if (!p) return true;                  // 根没有 split
+			if (!p->isRoot()) return false;
+			Tree::Node* sib = (p->leftChild() == node) ? p->rightChild() : p->leftChild();
+			return sib && sib->isLeaf();
+		}
+
 		void get_num(Tree::Node* node) {
 			while (!sprEnd[nodeDenseId[node]] && !node->isRoot()) {
-				sprNum[nodeDenseId[node]] = 1;
+				if (!isTrivialSplit(node)) sprNum[nodeDenseId[node]] = 1;
 				node = node->parent();
 			}
 		}
@@ -540,14 +552,22 @@ namespace spr44_algorithm {
 			for (auto const& [s, nd] : ans) {
 				if (sprPrune[nodeDenseId[nd]]) { standard = s; break; }
 			}
+			// 排除"挂回原位"与"挂回原兄弟位置"这两种 no-op：它们产出的是同一棵树，
+			// 其 dp 恒等于 standard，会被误判成"存在不劣于当前的 SPR 消灭了该 split"。
+			Tree::Node* const oldParent = treeSlice->parent();
+			Tree::Node* oldSibling = nullptr;
+			if (oldParent) oldSibling = (oldParent->leftChild() == treeSlice) ? oldParent->rightChild() : oldParent->leftChild();
 			for (auto const& [s, nd] : ans) {
 				if (sprPrune[nodeDenseId[nd]]) continue;
+				if (nd == oldParent || nd == oldSibling) continue;
 				if (s >= standard + Color::EPSILON) {
 					Tree::Node* const lca = getlca(treeSlice, nd);
 					sprEnd[nodeDenseId[lca]] = 1;
+					// 旧位置一侧：从被剪子树的父节点起，到 lca（不含）为止，这些节点的叶集失去 R
 					if (!treeSlice->isRoot()) get_num(treeSlice->parent());
-					if (!sprEnd[nodeDenseId[treeSlice->parent()]]) sprNum[nodeDenseId[treeSlice]] = 1;
-					if (!nd->isRoot()) get_num(nd);
+					// 新位置一侧：位置 nd 指的是"nd 上面那条边"，插入后 nd 自身叶集不变，
+					// 只有 nd 之上的节点才获得 R —— 所以从 parent(nd) 起标。
+					if (nd->parent()) get_num(nd->parent());
 					sprEnd[nodeDenseId[lca]] = 0;
 				}
 			}
