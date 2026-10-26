@@ -2,6 +2,8 @@
 #define SISTER_HPP
 
 #include "stepwise_colorable.hpp"
+#include "quadripartition_support.hpp"
+#include "quadripartition_support_spr44.hpp"
 
 namespace sister {
 
@@ -176,6 +178,9 @@ template<bool> class Driver : public common::LogInfo
 
 public:
 	using DataClasses = std::variant<Color::SharedConstData>;
+	using BranchAnnotations = branch_annotation::BranchAnnotations<quadripartition_support::BA_QS, quadripartition_support::BA_LBB, quadripartition_support_spr44::BA_SBB>;
+
+	static std::string constexpr DEFAULT_SUPPORT_ANNOTATION() noexcept { return "sbb"; };
 
 	static std::pair<string, string> programNames() noexcept {
 		return { "sister", "Synteny-Induced Species Tree EstimatoR" };
