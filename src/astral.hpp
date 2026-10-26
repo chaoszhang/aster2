@@ -465,7 +465,7 @@ template<bool> class Driver : public common::LogInfo
 	using string = std::string;
 
 public:
-	using DataClasses = std::variant<typename Color<StepwiseColorDefaultAttributes<double, true, true> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<double, true, false> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<double, false, true> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<unsigned long long, false, false> >::SharedConstData>;
+	using DataClasses = std::variant<typename Color<StepwiseColorDefaultAttributes<double, true, true> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<double, true, false> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<double, false, true> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<long long, false, false> >::SharedConstData>;
 	using BranchAnnotations = branch_annotation::BranchAnnotations<quadripartition_support::BA_QS, quadripartition_support::BA_LBB, quadripartition_support_spr44::BA_SBB>;
 
 	static std::string constexpr DEFAULT_SUPPORT_ANNOTATION() noexcept { return "sbb"; };
@@ -483,7 +483,7 @@ public:
 		if (mode == 1) return DriverHelper::read<typename Color<StepwiseColorDefaultAttributes<double, true, true> >::SharedConstData>();
 		if (mode == 2) return DriverHelper::read<typename Color<StepwiseColorDefaultAttributes<double, true, false> >::SharedConstData>();
 		if (mode == 3) return DriverHelper::read<typename Color<StepwiseColorDefaultAttributes<double, false, true> >::SharedConstData>();
-		if (mode == 4) return DriverHelper::read<typename Color<StepwiseColorDefaultAttributes<unsigned long long, false, false> >::SharedConstData>();
+		if (mode == 4) return DriverHelper::read<typename Color<StepwiseColorDefaultAttributes<long long, false, false> >::SharedConstData>();
 		
 		common::LogInfo vlog(-99);
 		vlog.log() << "Error: Invalid mode: " << mode << std::endl;
