@@ -16,7 +16,7 @@ jobs:
     - name: make
       run: make doc
     - name: sancheck
-      run: for c in sancheck/*/sancheck.bash; do bash $c; done
+      run: for c in sancheck/*/sancheck.bash; do bash $c || exit 1; done
     - name: commit
       run: |
             git config --local user.email "github-actions[bot]@github.com"
