@@ -29,7 +29,8 @@ ChangeLog logmain("main",
 	"2026-02-08", "Chao Zhang", "Add --root option", "patch",
 	"2026-02-13", "Chao Zhang", "Add time in logs", "patch",
 	"2026-03-02", "Chao Zhang", "Allowing no support for quad score undefined", "patch",
-	"2026-10-15", "Chao Zhang", "Adding guide tree support", "minor");
+	"2026-10-15", "Chao Zhang", "Adding guide tree support", "minor",
+	"2026-10-29", "Chao Zhang", "Supporting annotations", "patch");
 
 int main(int argc, char* argv[]) {
 	static_assert(driver::DRIVER<my_tool::Driver>);
@@ -50,6 +51,10 @@ int main(int argc, char* argv[]) {
 	ARG.addArgument('o', "output", "string", "Output file path, print to stdout if not provided", 5, true);
 	ARG.addArgument('t', "thread", "integer", "Number of threads", 4, true, true, "1");
 	ARG.addArgument('a', "mapping", "string", "Mapping file path, a list of gene/speicesman name to taxon name maps, each line contains one gene/speicesman name followed by one taxon name separated by a space or tab", 3, true, false);
+	if constexpr (driver::ANNOTATION_READY<my_tool::Driver>) {
+		ARG.addArgument('u', "support", "string", "Annotation method for internal nodes; options - " + Driver::BranchAnnotations::supportOptionText(), 3, true, true, Driver::DEFAULT_SUPPORT_ANNOTATION());
+		ARG.addArgument('l', "length", "string", "Annotation method for branches; options - " + Driver::BranchAnnotations::lengthOptionText(), 3, true, true, Driver::DEFAULT_LENGTH_ANNOTATION());
+	}
 	ARG.addArgument('g', "guide", "string", "Newick file containing binary trees as guide trees", 2, true, false);
 	ARG.addArgument('r', "initial-round", "integer", "Number of initial rounds of placement", 2, true, true, "8");
 	ARG.addArgument('s', "subsequent-round", "integer", "Number of subsequent rounds of placement", 2, true, true, "8");
@@ -60,6 +65,7 @@ int main(int argc, char* argv[]) {
 	ARG.addArgument('\0', "log-verbose", "integer", "Verbose level in log file", 0, true, true, "5");
 	ARG.addArgument('\0', "no-two-step", "flag", "Never use two-step placement algorithm", 1, true);
 	ARG.addArgument('\0', "subsample-min", "integer", "Minimum #Elements in each division when using subsample procedure", 1, true, true, "5000");
+
 	Driver::addArguments();
 
 	ARG.parse(argc, argv);
@@ -101,21 +107,18 @@ int main(int argc, char* argv[]) {
 
 		ARG.log() << "Time after optimization: " << (std::chrono::duration_cast<std::chrono::minutes>(Clock::now() - start)).count() << " minute(s)" << std::endl;
 
-		string supportKey;
-		if constexpr(driver::ANNOTATION_READY<my_tool::Driver>) {
-			supportKey = driver::annotate<my_tool::Driver, Color>(stepwiseColorSharedConstData, tree, nThreads, 0);
-			cerr << "Support annotation key: " << supportKey << endl;
-		}
+		string supportKey = driver::annotate<my_tool::Driver, Color>(ARG.get<string>("support"), stepwiseColorSharedConstData, tree, nThreads, 0);
+		string lengthKey = driver::annotate<my_tool::Driver, Color>(ARG.get<string>("length"), stepwiseColorSharedConstData, tree, nThreads, 0);
 
 		ARG.log() << "Time after support annotation: " << (std::chrono::duration_cast<std::chrono::minutes>(Clock::now() - start)).count() << " minute(s)" << std::endl;
 
 		if (ARG.has("output")) {
 			std::ofstream fout(ARG.get<string>("output"));
-			tree.displaySimpleNewick<double, double>(fout, supportKey, "length");
+			tree.displaySimpleNewick<double, double>(fout, supportKey, lengthKey);
 			fout << endl;
 		}
 		else {
-			tree.displaySimpleNewick<double, double>(std::cout, supportKey, "length");
+			tree.displaySimpleNewick<double, double>(std::cout, supportKey, lengthKey);
 			std::cout << endl;
 		}
 	}, Driver::getStepwiseColorSharedConstData());

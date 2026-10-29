@@ -554,7 +554,7 @@ public:
 			typename NNI::Prereq nnip(p.verbose);
 			ST st(stp);
 			Tree tree1 = st(color, threadpool, tree);
-			Tree tree2 = tree1;
+			Tree tree2 = tree1.deepCopy();
 			NNI nni(nnip);
 			tree2 = nni(color, threadpool, tree2);
 			ST st2(stp);
@@ -612,7 +612,7 @@ public:
 			typename SPR44::Prereq spr44p(p.verbose);
 			ST st(stp);
 			Tree tree3 = st(color, threadpool, tree);
-			Tree tree4 = tree3;
+			Tree tree4 = tree3.deepCopy();
 			SPR44 spr44(spr44p);
 			tree4 = spr44(color, threadpool, tree4);
 			ST st2(stp);

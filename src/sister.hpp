@@ -181,6 +181,7 @@ public:
 	using BranchAnnotations = branch_annotation::BranchAnnotations<quadripartition_support::BA_QS, quadripartition_support::BA_LBB, quadripartition_support_spr44::BA_SBB>;
 
 	static std::string constexpr DEFAULT_SUPPORT_ANNOTATION() noexcept { return "sbb"; };
+	static std::string constexpr DEFAULT_LENGTH_ANNOTATION() noexcept { return "none"; };
 
 	static std::pair<string, string> programNames() noexcept {
 		return { "sister", "Synteny-Induced Species Tree EstimatoR" };

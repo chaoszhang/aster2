@@ -17,14 +17,15 @@ template<template<bool> class Driver> concept ANNOTATION_READY = requires {
 	requires DRIVER<Driver>;
 	requires branch_annotation::BRANCH_ANNOTATIONS<typename Driver<true>::BranchAnnotations, typename std::variant_alternative_t<0, typename Driver<true>::DataClasses>::ParentClass>;
 	{ Driver<true>::DEFAULT_SUPPORT_ANNOTATION() } noexcept -> std::convertible_to<std::string const>;
+	{ Driver<true>::DEFAULT_LENGTH_ANNOTATION() } noexcept -> std::convertible_to<std::string const>;
 };
 
-template<template<bool> class Driver, class Color> requires (!ANNOTATION_READY<Driver>) std::string const annotate(typename Color::SharedConstData const& data, common::AnnotatedBinaryTree& tree, size_t nThreads, int verbose) {
+template<template<bool> class Driver, class Color> requires (!ANNOTATION_READY<Driver>) std::string const annotate(std::string const& name, typename Color::SharedConstData const& data, common::AnnotatedBinaryTree& tree, size_t nThreads, int verbose) {
 	return "";
 }
 
-template<template<bool> class Driver, class Color> requires ANNOTATION_READY<Driver> std::string const annotate(typename Color::SharedConstData const& data, common::AnnotatedBinaryTree& tree, size_t nThreads, int verbose) {
-	return Driver<true>::BranchAnnotations::template annotate<Color>(Driver<true>::DEFAULT_SUPPORT_ANNOTATION(), data, tree, nThreads, 0);
+template<template<bool> class Driver, class Color> requires ANNOTATION_READY<Driver> std::string const annotate(std::string const& name, typename Color::SharedConstData const& data, common::AnnotatedBinaryTree& tree, size_t nThreads, int verbose) {
+	return Driver<true>::BranchAnnotations::template annotate<Color>(name, data, tree, nThreads, 0);
 }
 
 };
