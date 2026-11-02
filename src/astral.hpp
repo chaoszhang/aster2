@@ -466,10 +466,10 @@ template<bool> class Driver : public common::LogInfo
 
 public:
 	using DataClasses = std::variant<typename Color<StepwiseColorDefaultAttributes<double, true, true> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<double, true, false> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<double, false, true> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<long long, false, false> >::SharedConstData>;
-	using BranchAnnotations = branch_annotation::BranchAnnotations<quadripartition_support::BA_QS, quadripartition_support::BA_LBB, quadripartition_support_spr44::BA_SBB>;
+	using BranchAnnotations = branch_annotation::BranchAnnotations<quadripartition_support::BA_QS, quadripartition_support::BA_LBB, quadripartition_support_spr44::BA_SBB, quadripartition_support::BA_CU>;
 
 	static std::string constexpr DEFAULT_SUPPORT_ANNOTATION() noexcept { return "sbb"; };
-	static std::string constexpr DEFAULT_LENGTH_ANNOTATION() noexcept { return "none"; };
+	static std::string constexpr DEFAULT_LENGTH_ANNOTATION() noexcept { return "cu"; };
 
 	static std::pair<string, string> programNames() noexcept {
 		return { "astral", "Accurate Species Tree ALgorithm (ASTRAL-IV)" };

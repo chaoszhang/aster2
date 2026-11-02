@@ -72,8 +72,14 @@ public:
 			node->set(common::AnnotatedBinaryTree::QUADRIPARTITION_ALTERNATIVE_1_SCORE, left_outgroup.score);
 			node->set(common::AnnotatedBinaryTree::QUADRIPARTITION_ALTERNATIVE_2_SCORE, right_outgroup.score);
 			score_t const total = left_right.score + left_outgroup.score + right_outgroup.score;
-			double const normalized = (total == 0) ? 0.0 : static_cast<double>(left_right.score) / static_cast<double>(total);
-			node->set(common::AnnotatedBinaryTree::NORMALIZED_QUADRIPARTITION_SCORE, normalized);
+			if (total <= Color::EPSILON) {
+				common::LogInfo const errlog(-99);
+				errlog.log() << "Warning: Total quadripartition score (" << total << ") is not positive for an internal node, setting normalized score to NaN" << std::endl;
+				node->set(common::AnnotatedBinaryTree::NORMALIZED_QUADRIPARTITION_SCORE, std::numeric_limits<double>::quiet_NaN());
+			} else {
+				double const normalized = static_cast<double>(left_right.score) / static_cast<double>(total);
+				node->set(common::AnnotatedBinaryTree::NORMALIZED_QUADRIPARTITION_SCORE, normalized);
+			}
 		}
 	};
 };
@@ -160,16 +166,6 @@ public:
 				}
 				if (s0 > s1 && s0 > s2) cnt++;
 			}
-			if (cnt == 0) {
-				for (size_t iBootstrap : std::views::iota((size_t)0, N_BOOTSTRAPS)) {
-					score_t s0 = 0, s1 = 0, s2 = 0;
-					for (size_t iBlock : bootstrap[iBootstrap]) {
-						s0 += left_right.scores[iBlock].second;
-						s1 += left_outgroup.scores[iBlock].second;
-						s2 += right_outgroup.scores[iBlock].second;
-					}
-				}
-			}
 			node->set("LocalBlockBootstrap", cnt * 100.0 / N_BOOTSTRAPS);
 		}
 	};
@@ -177,6 +173,75 @@ public:
 template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE Color> LocalBlockBootstrap::Data<Color> const LocalBlockBootstrap::Data<Color>::ZERO = LocalBlockBootstrap::Data<Color>();
 template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE Color> size_t LocalBlockBootstrap::Data<Color>::nElements{};
 template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE Color> vector<vector<size_t> > LocalBlockBootstrap::Data<Color>::bootstrap{};
+
+ChangeLog logCoalescentUnitLength("CoalescentUnitLength",
+	"2026-11-02", "Chao Zhang", "Coalescent unit branch length from quartet concordance", "minor");
+
+class CoalescentUnitLength {
+public:
+	static inline string const SHORT_NAME = "cu";
+	static inline string const FULL_NAME = "Coalescent Unit Length";
+	static inline string const MAIN_KEY = "CoalescentUnitLength";
+	static inline vector<string> const KEYS = { "CoalescentUnitLength", common::AnnotatedBinaryTree::QUADRIPARTITION_SCORE, common::AnnotatedBinaryTree::QUADRIPARTITION_ALTERNATIVE_1_SCORE, common::AnnotatedBinaryTree::QUADRIPARTITION_ALTERNATIVE_2_SCORE, common::AnnotatedBinaryTree::NORMALIZED_QUADRIPARTITION_SCORE };
+
+	template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE C> class Data {
+	public:
+		using Color = C;
+		using score_t = typename Color::score_t;
+		static Data const ZERO;
+
+	private:
+		score_t score;
+
+	public:
+		template<typename T> static void staticInitialize(common::Random<T>& random, size_t nElmnts) noexcept {}
+
+		Data(score_t score = 0) : score(score) {}
+
+		static array<Data, 3> map(Color& color, size_t iElement) noexcept {
+			array<score_t, 3> scores = color.elementQuadripartitionScores(iElement);
+			Data s0(scores[0]), s1(scores[1]), s2(scores[2]);
+			return { s0, s1, s2 };
+		}
+
+		static Data reduce(Data const& a, Data const& b) noexcept { return Data(a.score + b.score); }
+
+		static void annotate(common::AnnotatedBinaryTree::Node* node, Data const& left_right, Data const& left_outgroup, Data const& right_outgroup) noexcept {
+			node->set(common::AnnotatedBinaryTree::QUADRIPARTITION_SCORE, left_right.score);
+			node->set(common::AnnotatedBinaryTree::QUADRIPARTITION_ALTERNATIVE_1_SCORE, left_outgroup.score);
+			node->set(common::AnnotatedBinaryTree::QUADRIPARTITION_ALTERNATIVE_2_SCORE, right_outgroup.score);
+			score_t const total = left_right.score + left_outgroup.score + right_outgroup.score;
+			if (total <= Color::EPSILON) {
+				common::LogInfo const errlog(-99);
+				errlog.log() << "Warning: Total quadripartition score (" << total << ") is not positive for an internal node, setting coalescent unit length to NaN" << std::endl;
+				node->set(common::AnnotatedBinaryTree::NORMALIZED_QUADRIPARTITION_SCORE, std::numeric_limits<double>::quiet_NaN());
+				node->set("CoalescentUnitLength", std::numeric_limits<double>::quiet_NaN());
+			}
+			else {
+				double const concordance = static_cast<double>(left_right.score) / static_cast<double>(total);
+				node->set(common::AnnotatedBinaryTree::NORMALIZED_QUADRIPARTITION_SCORE, concordance);
+				if (left_right.score + Color::EPSILON >= total) {
+					common::LogInfo const errlog(-99);
+					errlog.log() << "Warning: Normalized quadripartition score (" << concordance << ") >= 1 for an internal node, setting coalescent unit length to NaN" << std::endl;
+					node->set("CoalescentUnitLength", std::numeric_limits<double>::quiet_NaN());
+				}
+				else{
+					if (3 * left_right.score + Color::EPSILON < total) {
+						common::LogInfo const errlog(-99);
+						errlog.log() << "Warning: Normalized quadripartition score (" << concordance << ") < 1/3 for an internal node, setting coalescent unit length to NaN" << std::endl;
+						node->set("CoalescentUnitLength", std::numeric_limits<double>::quiet_NaN());
+					}
+					else {
+						double length = -std::log(1.5 * (1.0 - concordance));
+						node->set("CoalescentUnitLength", length);
+					}
+				}
+			}
+		}
+	};
+};
+template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE Color> CoalescentUnitLength::Data<Color> const CoalescentUnitLength::Data<Color>::ZERO = CoalescentUnitLength::Data<Color>();
+
 
 template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE C> struct ProcedureAttributes {
 	using Color = C;
@@ -236,6 +301,7 @@ public:
 
 using BA_QS = BranchAnnotation<QuartetScore>;
 using BA_LBB = BranchAnnotation<LocalBlockBootstrap>;
+using BA_CU = BranchAnnotation<CoalescentUnitLength>;
 
 };
 
