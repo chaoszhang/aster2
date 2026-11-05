@@ -23,3 +23,4 @@ clean: dir
 doc: all
 	mkdir -p doc
 	bin/caster -H > doc/caster.md
+	bin/astral -H > doc/astral.md

@@ -496,17 +496,82 @@ class Documentation : public common::DocumentationBase {
 protected:
 	string introduction() const noexcept override {
 		return R"YOHANETYO(# Accurate Species Tree ALgorithm (ASTRAL-IV)
+
+ASTRAL is a tool for estimating an unrooted species tree given a set of unrooted gene trees. ASTRAL is statistically consistent under the multi-species coalescent model (and thus is useful for handling incomplete lineage sorting, i.e., ILS). ASTRAL finds the species tree that has the maximum number of shared induced quartet trees with the set of gene trees, subject to the constraint that the set of tripartitions in the species tree comes from a predefined set of tripartitions.
+
+ASTRAL-IV re-implements [ASTRAL](https://github.com/smirarab/ASTRAL) as a scalable alternative to ASTRAL on datasets for which ASTRAL is not suitable (e.g. large datasets, multi-individual, and gene trees with missing taxa). It is written in C++20 with no external dependency, and a single desktop machine can handle hundreds of thousands of gene trees.
+
+## Weighting modes (wASTRAL)
+
+ASTRAL-IV generalizes the quartet score of ASTRAL-III by weighting each gene tree according to its branch support and/or branch length. Use `--mode` to choose:
+
+* `--mode 1` (default): hybrid weighting, using both branch support and branch length
+* `--mode 2`: weighting by branch support only
+* `--mode 3`: weighting by branch length only
+* `--mode 4`: unweighted, equivalent to the quartet score used by ASTRAL-III
+
+Weighting down-weights gene trees that are poorly resolved or inferred from short/sparse loci, and typically improves accuracy when gene trees differ greatly in quality.
+
+## Search
+
+The species tree is found by stepwise addition of taxa, followed by an SPR search on the resulting tree. The number of placement rounds is controlled by `-r` (initial rounds, 8 by default) and `-s` (subsequent rounds, 8 by default):
+
+```
+bin/astral -r 16 -s 16 -i INPUT_FILE -o OUTPUT_FILE
+```
+
+For datasets with few taxa and few genes it is often worth the extra time. Guide trees can be supplied to restrict or speed up the search:
+
+```
+bin/astral -g GUIDE_TREES_IN_NEWICK_FORMAT -i INPUT_FILE -o OUTPUT_FILE
+```
+
+## Branch annotations
+
+Internal branches can carry an annotation computed by `-u`, and branch lengths an annotation computed by `-l`:
+
+* `sbb` - SPR block bootstrap (default for `-u`)
+* `lbb` - local block bootstrap
+* `qs` - quartet score
+* `cu` - coalescent unit length (default for `-l`)
+* `none`, or `verbose` (for `-u` only) - no annotation, or report every quantity
+
+```
+bin/astral -u lbb -l cu -i INPUT_FILE -o OUTPUT_FILE
+```
+
+## Rooting
+
+The estimated species tree is unrooted. To root it at a given outgroup, use `--root`:
+
+```
+bin/astral --root YOUR_OUTGROUP -i INPUT_FILE -o OUTPUT_FILE
+```
+
+## Publication
+
+Chao Zhang, Rasmus Nielsen, Siavash Mirarab, ASTER: A Package for Large-scale Phylogenomic Reconstructions, Molecular Biology and Evolution, 2025, msaf172, https://doi.org/10.1093/molbev/msaf172
+
+## Notice
+
+Unlike ASTRAL-III, ASTRAL-IV does not implement multi-locus bootstrapping. To obtain bootstrap supports, run ASTRAL-IV on each replicate to obtain the optimal tree for that replicate, and pass the resulting trees to ASTRAL-III using `-q`. Alternatively, use the block bootstrap annotations (`sbb` and `lbb`) reported here, which do not require re-running the search.
 )YOHANETYO";
 	}
 
 	string input() const noexcept override {
 		return R"YOHANETYO(# INPUT
+
+* The input is a single file of unrooted gene trees in Newick format, one tree per line (blank lines are ignored). See `example/genetree.nw` for an example.
+* The input gene trees can have missing taxa, polytomies (unresolved branches), and multiple individuals per species. Polytomies in the input are resolved arbitrarily.
+* Branch support and branch length in the input gene trees are optional; when present, they are used by the weighting modes (see the `--mode` option).
+* Multiple individuals from the same species are assumed to have the same name in the input, e.g. `((name_A,name_B),(name_A,name_C));`.
+* Alternatively, a mapping file can be provided using `-a`, in which case individuals mapped to the same taxon are forced to be together (monophyletic) in the species tree. The format of the mapping file is described below.
 )YOHANETYO";
 	}
 
 	string programName() const noexcept override { return "astral"; }
 
-	string exampleInput() const noexcept override { return "genetrees.nw"; }
+	string exampleInput() const noexcept override { return "genetree.nw"; }
 };
 
 };

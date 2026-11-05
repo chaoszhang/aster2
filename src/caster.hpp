@@ -412,7 +412,45 @@ Chao Zhang, Rasmus Nielsen, Siavash Mirarab, CASTER: Direct species tree inferen
 
 ## Notice
 
-Since CASTER-site and CASTER-pair assume different models, please run both and choose the result that makes more sense if you can.
+This executable implements **CASTER-site**; CASTER-pair is not included in ASTER2 and remains available in the ASTER package. Since the two flavors assume different models, please run both and choose the result that makes more sense if you can.
+
+## Advanced options
+
+The species tree is found by stepwise addition of taxa followed by an SPR search. The number of placement rounds is controlled by `-r` (initial rounds, 8 by default) and `-s` (subsequent rounds, 8 by default):
+
+```
+bin/caster -r 16 -s 16 -i INPUT_FILE -o OUTPUT_FILE
+```
+
+Guide trees can be supplied to restrict or speed up the search:
+
+```
+bin/caster -g GUIDE_TREES_IN_NEWICK_FORMAT -i INPUT_FILE -o OUTPUT_FILE
+```
+
+Internal branches can carry an annotation computed by `-u`, and branch lengths an annotation computed by `-l`:
+
+* `sbb` - SPR block bootstrap (default for `-u`)
+* `lbb` - local block bootstrap
+* `qs` - quartet score
+* `cu` - coalescent unit length (default for `-l`)
+* `none`, or `verbose` (for `-u` only) - no annotation, or report every quantity
+
+```
+bin/caster -u lbb -l cu -i INPUT_FILE -o OUTPUT_FILE
+```
+
+Mutation-rate parameters are estimated from local alignment blocks. `--chunk` sets the maximum number of sites per block (10000 by default); smaller blocks accommodate more heterogeneity at a higher computational cost:
+
+```
+bin/caster --chunk 500 -i INPUT_FILE -o OUTPUT_FILE
+```
+
+To root the estimated tree at a given outgroup, use `--root`:
+
+```
+bin/caster --root YOUR_OUTGROUP -i INPUT_FILE -o OUTPUT_FILE
+```
 )YOHANETYO";
 	}
 
