@@ -242,6 +242,98 @@ public:
 };
 template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE Color> CoalescentUnitLength::Data<Color> const CoalescentUnitLength::Data<Color>::ZERO = CoalescentUnitLength::Data<Color>();
 
+ChangeLog logCoalescentUnitLengthCASTER("CoalescentUnitLengthCASTER",
+	"2026-11-02", "Chao Zhang", "Coalescent unit length from length-weighted quartet scores (CASTER series)", "minor");
+
+class CoalescentUnitLengthCASTER {
+public:
+	static inline string const SHORT_NAME = "cu";
+	static inline string const FULL_NAME = "Coalescent Unit Length";
+	static inline string const MAIN_KEY = "CoalescentUnitLength";
+	static inline vector<string> const KEYS = { "CoalescentUnitLength", common::AnnotatedBinaryTree::QUADRIPARTITION_SCORE, common::AnnotatedBinaryTree::QUADRIPARTITION_ALTERNATIVE_1_SCORE, common::AnnotatedBinaryTree::QUADRIPARTITION_ALTERNATIVE_2_SCORE, common::AnnotatedBinaryTree::NORMALIZED_QUADRIPARTITION_SCORE };
+
+	template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE C> class Data {
+	public:
+		using Color = C;
+		using score_t = typename Color::score_t;
+		static Data const ZERO;
+
+		static inline double constexpr MAX_LENGTH = 10.0;
+
+	private:
+		score_t score;
+
+		// ratio = (s1 - s2) / (s1 + 2 * s2) = t / (t + exp(-t)); monotone increasing, solve by bisection
+		static double invertRatio(double ratio) noexcept {
+			double lo = 0.0, hi = MAX_LENGTH;
+			for (size_t i : std::views::iota((size_t)0, (size_t)64)) {
+				double const mid = 0.5 * (lo + hi);
+				double const value = mid / (mid + std::exp(-mid));
+				if (value < ratio) lo = mid;
+				else hi = mid;
+			}
+			return 0.5 * (lo + hi);
+		}
+
+	public:
+		template<typename T> static void staticInitialize(common::Random<T>& random, size_t nElmnts) noexcept {}
+
+		Data(score_t score = 0) : score(score) {}
+
+		static array<Data, 3> map(Color& color, size_t iElement) noexcept {
+			array<score_t, 3> scores = color.elementQuadripartitionScores(iElement);
+			Data s0(scores[0]), s1(scores[1]), s2(scores[2]);
+			return { s0, s1, s2 };
+		}
+
+		static Data reduce(Data const& a, Data const& b) noexcept { return Data(a.score + b.score); }
+
+		static void annotate(common::AnnotatedBinaryTree::Node* node, Data const& left_right, Data const& left_outgroup, Data const& right_outgroup) noexcept {
+			node->set(common::AnnotatedBinaryTree::QUADRIPARTITION_SCORE, left_right.score);
+			node->set(common::AnnotatedBinaryTree::QUADRIPARTITION_ALTERNATIVE_1_SCORE, left_outgroup.score);
+			node->set(common::AnnotatedBinaryTree::QUADRIPARTITION_ALTERNATIVE_2_SCORE, right_outgroup.score);
+			score_t const total = left_right.score + left_outgroup.score + right_outgroup.score;
+			if (total <= Color::EPSILON) {
+				common::LogInfo const errlog(-99);
+				errlog.log() << "Warning: Total quadripartition score (" << total << ") is not positive for an internal node, setting coalescent unit length to NaN" << std::endl;
+				node->set(common::AnnotatedBinaryTree::NORMALIZED_QUADRIPARTITION_SCORE, std::numeric_limits<double>::quiet_NaN());
+				node->set("CoalescentUnitLength", std::numeric_limits<double>::quiet_NaN());
+			}
+			else {
+				double const s1 = static_cast<double>(left_right.score);
+				double const s2 = 0.5 * static_cast<double>(left_outgroup.score + right_outgroup.score);
+				double const concordance = s1 / static_cast<double>(total);
+				node->set(common::AnnotatedBinaryTree::NORMALIZED_QUADRIPARTITION_SCORE, concordance);
+				if (s2 <= Color::EPSILON) {
+					common::LogInfo const errlog(-99);
+					errlog.log() << "Warning: Discordant quadripartition score (" << s2 << ") is not positive for an internal node, setting coalescent unit length to NaN" << std::endl;
+					node->set("CoalescentUnitLength", std::numeric_limits<double>::quiet_NaN());
+				}
+				else {
+					double const ratio = (s1 - s2) / (s1 + 2.0 * s2);
+					if (ratio < 0.0) {
+						common::LogInfo const errlog(-99);
+						errlog.log() << "Warning: Length-weighted quadripartition ratio (" << ratio << ") < 0 for an internal node, setting coalescent unit length to NaN" << std::endl;
+						node->set("CoalescentUnitLength", std::numeric_limits<double>::quiet_NaN());
+					}
+					else {
+						double const atMax = MAX_LENGTH / (MAX_LENGTH + std::exp(-MAX_LENGTH));
+						if (ratio >= atMax) {
+							common::LogInfo const errlog(-99);
+							errlog.log() << "Warning: Length-weighted quadripartition ratio (" << ratio << ") is saturated for an internal node, setting coalescent unit length to " << MAX_LENGTH << std::endl;
+							node->set("CoalescentUnitLength", MAX_LENGTH);
+						}
+						else {
+							node->set("CoalescentUnitLength", invertRatio(ratio));
+						}
+					}
+				}
+			}
+		}
+	};
+};
+template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE Color> CoalescentUnitLengthCASTER::Data<Color> const CoalescentUnitLengthCASTER::Data<Color>::ZERO = CoalescentUnitLengthCASTER::Data<Color>();
+
 
 template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE C> struct ProcedureAttributes {
 	using Color = C;
@@ -302,6 +394,7 @@ public:
 using BA_QS = BranchAnnotation<QuartetScore>;
 using BA_LBB = BranchAnnotation<LocalBlockBootstrap>;
 using BA_CU = BranchAnnotation<CoalescentUnitLength>;
+using BA_CU_CASTER = BranchAnnotation<CoalescentUnitLengthCASTER>;
 
 };
 

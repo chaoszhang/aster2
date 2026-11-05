@@ -72,6 +72,20 @@ int main(int argc, char* argv[]) {
 	common::LogInfo::setVerbose(ARG.has("no-log") ? nullptr : new std::ofstream(ARG.get<string>("log")), ARG.get<size_t>("log-verbose"), ARG.get<size_t>("verbose"));
 	ARG.print();
 
+	if constexpr (driver::ANNOTATION_READY<my_tool::Driver>) {
+		common::LogInfo errlog(-99);
+		string const& supportOption = ARG.get<string>("support");
+		if (supportOption != "none" && supportOption != "verbose" && !Driver::BranchAnnotations::isValid(supportOption)) {
+			errlog << "Error: Invalid internal node annotation option: " << supportOption << endl;
+			exit(-1);
+		}
+		string const& lengthOption = ARG.get<string>("length");
+		if (lengthOption != "none" && !Driver::BranchAnnotations::isValid(lengthOption)) {
+			errlog << "Error: Invalid branch annotation option: " << lengthOption << endl;
+			exit(-1);
+		}
+	}
+
 	if (ARG.has("root")) common::taxonName2ID[ARG.get<string>("root")];
 	
 	auto start = Clock::now();

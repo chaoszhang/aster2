@@ -52,7 +52,7 @@ A mapping file is convient when you have multiple speciesmen per taxon and you w
 		return R"YOHANETYO(# OUTPUT
 The output in is Newick format and gives:
 * the species tree topology
-* branch supports measured as local block bootstrap supports by default (>95.0 means good)
+* branch supports measured as SPR block bootstrap supports by default (>70.0 means good)
 * It can also annotate branches with other quantities, such as quartet scores and bootstraps for all three topologies.
 )YOHANETYO";
 	}
@@ -101,8 +101,6 @@ ASTER2 supports multi-threading. To run program with 4 threads, add `-t 4`:
 ```
 bin/{0} -t 4 -i INPUT_FILE -o OUTPUT_FILE
 ```
-
-ASTER2 has very good parrallel efficiency up to 64 cores when input data is large. In fact, it often experiences super-linear speedup with 16 cores or more. So feel free to use as many cores as you want.
 
 ASTER2 also allows rooting at an given outgroup taxon:
 
