@@ -22,12 +22,17 @@ namespace my_tool = caster;
 #include "astral.hpp"
 namespace my_tool = astral;
 #else
+#ifdef ASTRAL_IAD
+#include "astral-iad.hpp"
+namespace my_tool = astral_iad;
+#else
 #ifdef SISTER
 #include "sister.hpp"
 namespace my_tool = sister;
 #else
 #include "caster.hpp"
 namespace my_tool = caster;
+#endif
 #endif
 #endif
 #endif
@@ -67,8 +72,8 @@ int main(int argc, char* argv[]) {
 	ARG.addArgument('t', "thread", "integer", "Number of threads", 4, true, true, "1");
 	ARG.addArgument('a', "mapping", "string", "Mapping file path, a list of gene/speicesman name to taxon name maps, each line contains one gene/speicesman name followed by one taxon name separated by a space or tab", 3, true, false);
 	if constexpr (driver::ANNOTATION_READY<my_tool::Driver>) {
-		ARG.addArgument('u', "support", "string", "Annotation method for internal nodes; options - " + Driver::BranchAnnotations::supportOptionText(), 3, true, true, Driver::DEFAULT_SUPPORT_ANNOTATION());
-		ARG.addArgument('l', "length", "string", "Annotation method for branches; options - " + Driver::BranchAnnotations::lengthOptionText(), 3, true, true, Driver::DEFAULT_LENGTH_ANNOTATION());
+		ARG.addArgument('u', "support", "string", "Annotation method for internal nodes; options - " + driver::supportOptionText<my_tool::Driver>(), 3, true, true, driver::DEFAULT_SUPPORT_ANNOTATION<my_tool::Driver>());
+		ARG.addArgument('l', "length", "string", "Annotation method for branches; options - " + driver::lengthOptionText<my_tool::Driver>(), 3, true, true, driver::DEFAULT_LENGTH_ANNOTATION<my_tool::Driver>());
 	}
 	ARG.addArgument('g', "guide", "string", "Newick file containing binary trees as guide trees", 2, true, false);
 	ARG.addArgument('r', "initial-round", "integer", "Number of initial rounds of placement", 2, true, true, "8");
@@ -90,12 +95,12 @@ int main(int argc, char* argv[]) {
 	if constexpr (driver::ANNOTATION_READY<my_tool::Driver>) {
 		common::LogInfo errlog(-99);
 		string const& supportOption = ARG.get<string>("support");
-		if (supportOption != "none" && supportOption != "verbose" && !Driver::BranchAnnotations::isValid(supportOption)) {
+		if (supportOption != "none" && supportOption != "verbose" && !driver::isValid<my_tool::Driver>(supportOption)) {
 			errlog << "Error: Invalid internal node annotation option: " << supportOption << endl;
 			exit(-1);
 		}
 		string const& lengthOption = ARG.get<string>("length");
-		if (lengthOption != "none" && !Driver::BranchAnnotations::isValid(lengthOption)) {
+		if (lengthOption != "none" && !driver::isValid<my_tool::Driver>(lengthOption)) {
 			errlog << "Error: Invalid branch annotation option: " << lengthOption << endl;
 			exit(-1);
 		}
@@ -136,8 +141,11 @@ int main(int argc, char* argv[]) {
 
 		ARG.log() << "Time after optimization: " << (std::chrono::duration_cast<std::chrono::minutes>(Clock::now() - start)).count() << " minute(s)" << std::endl;
 
-		string supportKey = driver::annotate<my_tool::Driver, Color>(ARG.get<string>("support"), stepwiseColorSharedConstData, tree, nThreads, 0);
-		string lengthKey = driver::annotate<my_tool::Driver, Color>(ARG.get<string>("length"), stepwiseColorSharedConstData, tree, nThreads, 0);
+		string supportKey, lengthKey;
+		if constexpr (driver::ANNOTATION_READY<my_tool::Driver>) {
+			supportKey = driver::annotate<my_tool::Driver, Color>(ARG.get<string>("support"), stepwiseColorSharedConstData, tree, nThreads, 0);
+			lengthKey = driver::annotate<my_tool::Driver, Color>(ARG.get<string>("length"), stepwiseColorSharedConstData, tree, nThreads, 0);
+		}
 
 		ARG.log() << "Time after support annotation: " << (std::chrono::duration_cast<std::chrono::minutes>(Clock::now() - start)).count() << " minute(s)" << std::endl;
 

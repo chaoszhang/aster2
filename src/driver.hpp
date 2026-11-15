@@ -20,12 +20,52 @@ template<template<bool> class Driver> concept ANNOTATION_READY = requires {
 	{ Driver<true>::DEFAULT_LENGTH_ANNOTATION() } noexcept -> std::convertible_to<std::string const>;
 };
 
+template<template<bool> class Driver, class Color> requires ANNOTATION_READY<Driver> std::string const annotate(std::string const& name, typename Color::SharedConstData const& data, common::AnnotatedBinaryTree& tree, size_t nThreads, int verbose) {
+	return Driver<true>::BranchAnnotations::template annotate<Color>(name, data, tree, nThreads, 0);
+}
+
 template<template<bool> class Driver, class Color> requires (!ANNOTATION_READY<Driver>) std::string const annotate(std::string const& name, typename Color::SharedConstData const& data, common::AnnotatedBinaryTree& tree, size_t nThreads, int verbose) {
 	return "";
 }
 
-template<template<bool> class Driver, class Color> requires ANNOTATION_READY<Driver> std::string const annotate(std::string const& name, typename Color::SharedConstData const& data, common::AnnotatedBinaryTree& tree, size_t nThreads, int verbose) {
-	return Driver<true>::BranchAnnotations::template annotate<Color>(name, data, tree, nThreads, 0);
+template<template<bool> class Driver> requires ANNOTATION_READY<Driver> bool const isValid(std::string const& name) {
+	return Driver<true>::BranchAnnotations::isValid(name);
+}
+
+template<template<bool> class Driver> requires (!ANNOTATION_READY<Driver>) bool const isValid(std::string const& name) {
+	return false;
+}
+
+template<template<bool> class Driver> requires ANNOTATION_READY<Driver> std::string const supportOptionText() {
+	return Driver<true>::BranchAnnotations::supportOptionText();
+}
+
+template<template<bool> class Driver> requires ANNOTATION_READY<Driver> std::string const DEFAULT_SUPPORT_ANNOTATION() {
+	return Driver<true>::DEFAULT_SUPPORT_ANNOTATION();
+}
+
+template<template<bool> class Driver> requires ANNOTATION_READY<Driver> std::string const lengthOptionText() {
+	return Driver<true>::BranchAnnotations::lengthOptionText();
+}
+
+template<template<bool> class Driver> requires ANNOTATION_READY<Driver> std::string const DEFAULT_LENGTH_ANNOTATION() {
+	return Driver<true>::DEFAULT_LENGTH_ANNOTATION();
+}
+
+template<template<bool> class Driver> requires (!ANNOTATION_READY<Driver>) std::string const supportOptionText() {
+	return "";
+}
+
+template<template<bool> class Driver> requires (!ANNOTATION_READY<Driver>) std::string const DEFAULT_SUPPORT_ANNOTATION() {
+	return "";
+}
+
+template<template<bool> class Driver> requires (!ANNOTATION_READY<Driver>) std::string const lengthOptionText() {
+	return "";
+}
+
+template<template<bool> class Driver> requires (!ANNOTATION_READY<Driver>) std::string const DEFAULT_LENGTH_ANNOTATION() {
+	return "";
 }
 
 };
