@@ -2,6 +2,18 @@
 #include "driver.hpp"
 #include "newick.hpp"
 
+#ifdef WCASTER
+#include "wcaster.hpp"
+namespace my_tool = wcaster;
+#else
+#ifdef WTRIAL
+#include "wtrial.hpp"
+namespace my_tool = wtrial;
+#else
+#ifdef TRIAL
+#include "trial.hpp"
+namespace my_tool = trial;
+#else
 #ifdef CASTER
 #include "caster.hpp"
 namespace my_tool = caster;
@@ -16,6 +28,9 @@ namespace my_tool = sister;
 #else
 #include "caster.hpp"
 namespace my_tool = caster;
+#endif
+#endif
+#endif
 #endif
 #endif
 #endif

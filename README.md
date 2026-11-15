@@ -16,6 +16,9 @@ ASTER2 is the next-generation implementation of the ASTER package. It is written
 | ------------ | ---------------------------- | -------------------- | ----------- |
 | `bin/astral` | ASTRAL-IV, including wASTRAL | gene trees (Newick)  | pre-release |
 | `bin/caster` | CASTER-site                  | MSA (Phylip / Fasta) | pre-release |
+| `bin/trial`  | TRIAL (Triplet Algorithm-based CASTER) | `fasta2ref` | experimental |
+| `bin/wtrial` | weighted TRIAL               | `fasta2ref`          | experimental |
+| `bin/wcaster` | weighted CASTER             | `fasta2ref`          | experimental |
 
 Features in `bin/astral`:
 
@@ -31,6 +34,14 @@ Features in `bin/caster`:
 - handles missing taxa, multiple individuals per species, and unphased multiploid data
 - extremely memory efficient (below 1 byte per SNP per sample)
 - same support / branch-length annotation scheme as `bin/astral` (`sbb`, `lbb`, `qs`, `cu`)
+
+Features in `bin/trial`, `bin/wtrial`, `bin/wcaster`:
+
+- these tools take a `fasta2ref` file instead of a single alignment: each line is `<alignment.fasta> <reference_species>`
+- `bin/trial` implements TRIAL (Triplet Algorithm-based CASTER); it scores only quartets that contain the per-alignment reference species
+- `bin/wtrial` = `trial` + sequence-similarity weighting; `bin/wcaster` = CASTER's quartet scoring + sequence-similarity weighting
+- weighting is per chunk by default (chunk size 1000); `--alignment-weight` uses one weight per alignment
+- support annotations `sbb` / `lbb` / `qs` are available; the default is `sbb`, and there is no `cu` branch length for these tools
 
 ## Not available yet
 
@@ -59,7 +70,13 @@ make doc        # writes doc/astral.md and doc/caster.md
 ```
 bin/astral -i example/genetree.nw -o out.stree        # from gene trees
 bin/caster -i example/alignment.phylip -o out.stree   # from an alignment
+bin/trial  -i example/trial/fasta2ref.txt -o out.tree       # TRIAL (Triplet Algorithm-based CASTER)
+bin/wtrial -i example/trial/fasta2ref.txt -o out.tree       # weighted, per chunk
+bin/wcaster -i example/trial/fasta2ref.txt -o out.tree      # CASTER scoring + sequence-similarity weighting
 ```
+
+`example/trial` is a small simulated 8-taxon alignment with a known tree; see
+`example/trial/README.md` for details and more commands.
 
 List all options, or print the full documentation in markdown:
 
