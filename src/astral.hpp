@@ -35,7 +35,8 @@ template<typename score_type, bool wSupport, bool wLength> struct StepwiseColorD
 };
 
 ChangeLog logColor("Color",
-	"2026-03-30", "Chao Zhang", "Bug fix in resolving polytomies", "patch");
+	"2026-03-30", "Chao Zhang", "Bug fix in resolving polytomies", "patch",
+	"2026-11-17", "Chao Zhang", "Bug fix for missing taxa", "patch");
 
 template<STEPWISE_COLOR_ATTRIBUTES Attributes> class Color {
 public:
@@ -234,6 +235,7 @@ public:
 	void elementSetTaxonColor(size_t iElement, size_t iTaxon, size_t iColor) noexcept {
 		Tree& tree = trees[iElement];
 		index_t iNode = tree.taxonID2nodeID[iTaxon];
+		if (iNode == -1) return;
 		typename Tree::Node& node = tree.nodes[iNode];
 		// Assuming x2a, xya or alike are all zeros
 		score_t wLength = node.wLength;
@@ -247,6 +249,7 @@ public:
 	void elementClearTaxonColor(size_t iElement, size_t iTaxon, size_t iColor) noexcept {
 		Tree& tree = trees[iElement];
 		index_t iNode = tree.taxonID2nodeID[iTaxon];
+		if (iNode == -1) return;
 		typename Tree::Node& node = tree.nodes[iNode];
 		// Assuming x2a, xya or alike are all zeros
 		score_t wLength = node.wLength;
@@ -260,6 +263,7 @@ public:
 	void elementClearAndSetTaxonColor(size_t iElement, size_t iTaxon, size_t iColor, size_t jColor) noexcept {
 		Tree& tree = trees[iElement];
 		index_t iNode = tree.taxonID2nodeID[iTaxon];
+		if (iNode == -1) return;
 		typename Tree::Node& node = tree.nodes[iNode];
 		// Assuming x2a, xya or alike are all zeros
 		score_t wLength = node.wLength;

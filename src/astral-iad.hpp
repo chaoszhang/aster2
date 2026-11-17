@@ -150,6 +150,7 @@ namespace astral_iad {
 		void elementSetTaxonColor(size_t iElement, size_t iTaxon, size_t iColor) noexcept {
 			Tree& tree = trees[iElement];
 			index_t iNode = tree.taxonID2nodeID[iTaxon];
+			if (iNode == -1) return;
 			typename Tree::Node& node = tree.nodes[iNode];
 			// Assuming x2a, xya or alike are all zeros
 			if (iColor == 0) node.x++;
@@ -162,6 +163,7 @@ namespace astral_iad {
 		void elementClearTaxonColor(size_t iElement, size_t iTaxon, size_t iColor) noexcept {
 			Tree& tree = trees[iElement];
 			index_t iNode = tree.taxonID2nodeID[iTaxon];
+			if (iNode == -1) return;
 			typename Tree::Node& node = tree.nodes[iNode];
 			// Assuming x2a, xya or alike are all zeros
 			if (iColor == 0) node.x--;
@@ -174,6 +176,7 @@ namespace astral_iad {
 		void elementClearAndSetTaxonColor(size_t iElement, size_t iTaxon, size_t iColor, size_t jColor) noexcept {
 			Tree& tree = trees[iElement];
 			index_t iNode = tree.taxonID2nodeID[iTaxon];
+			if (iNode == -1) return;
 			typename Tree::Node& node = tree.nodes[iNode];
 			// Assuming x2a, xya or alike are all zeros
 			if (iColor == 0) node.x--;
