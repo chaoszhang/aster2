@@ -69,7 +69,9 @@ namespace astral_iad {
 			};
 
 			struct QNode {
-				// TODO
+				index_t w = 0;
+				score_t coxy = 0, coxz = 0, coyz = 0, cowx = 0, cowy = 0, cowz = 0;
+				score_t cox = 0, coy = 0, coz = 0, cow = 0, co = 0;
 			};
 
 			vector<Node> nodes;
@@ -114,16 +116,33 @@ namespace astral_iad {
 				w.y = u.y + v.y;
 				w.z = u.z + v.z;
 				
-				score_t xyzl = w.x * w.y * w.z * w.length;
+				index_t x = w.x, y = w.y, z = w.z;
+				score_t L = w.length;
+				score_t xyzl = x * y * z * L;
 
-				w.cox2 = u.cox2 + v.cox2 + w.y * w.z * w.length;
-				w.coy2 = u.coy2 + v.coy2 + w.x * w.z * w.length;
-				w.coz2 = u.coz2 + v.coz2 + w.x * w.y * w.length;
+				w.cox2 = u.cox2 + v.cox2 + y * z * L;
+				w.coy2 = u.coy2 + v.coy2 + x * z * L;
+				w.coz2 = u.coz2 + v.coz2 + x * y * L;
 				w.co1 = u.co1 + v.co1 - 2 * xyzl;
-				w.co0 = u.co0 + v.co0 + (w.x + w.y + w.z + 3) * xyzl;
+				w.co0 = u.co0 + v.co0 + (x + y + z + 3) * xyzl;
 
 				if (quadMode) {
-					// TODO
+					QNode& W = qnodes[iNode];
+					QNode& U = qnodes[w.lc];
+					QNode& V = qnodes[w.rc];
+					W.w = U.w + V.w;
+					index_t w = W.w;
+					W.coxy = U.coxy + V.coxy + w * z * L;
+					W.coxz = U.coxz + V.coxz + w * y * L;
+					W.coyz = U.coyz + V.coyz + w * x * L;
+					W.cowx = U.cowx + V.cowx + y * z * L;
+					W.cowy = U.cowy + V.cowy + x * z * L;
+					W.cowz = U.cowz + V.cowz + x * y * L;
+					W.cox = U.cox + V.cox - w * y * z * L;
+					W.coy = U.coy + V.coy - w * x * z * L;
+					W.coz = U.coz + V.coz - w * x * y * L;
+					W.cow = U.cow + V.cow - x * y * z * L;
+					W.co = U.co + V.co + 2 * w * x * y * z * L;
 				}
 
 				update(w.parent, quadMode);
@@ -156,7 +175,7 @@ namespace astral_iad {
 			if (iColor == 0) node.x++;
 			if (iColor == 1) node.y++;
 			if (iColor == 2) node.z++;
-			//if (iColor == 3) tree.qnodes[iNode].w++;
+			if (iColor == 3) tree.qnodes[iNode].w++;
 			recursiveUpdate(iElement, node.parent);
 		}
 
@@ -169,7 +188,7 @@ namespace astral_iad {
 			if (iColor == 0) node.x--;
 			if (iColor == 1) node.y--;
 			if (iColor == 2) node.z--;
-			//if (iColor == 3) tree.qnodes[iNode].w--;
+			if (iColor == 3) tree.qnodes[iNode].w--;
 			recursiveUpdate(iElement, node.parent);
 		}
 
@@ -182,24 +201,28 @@ namespace astral_iad {
 			if (iColor == 0) node.x--;
 			if (iColor == 1) node.y--;
 			if (iColor == 2) node.z--;
-			//if (iColor == 3) tree.qnodes[iNode].w--;
+			if (iColor == 3) tree.qnodes[iNode].w--;
 			if (jColor == 0) node.x++;
 			if (jColor == 1) node.y++;
 			if (jColor == 2) node.z++;
-			//if (jColor == 3) tree.qnodes[iNode].w++;
+			if (jColor == 3) tree.qnodes[iNode].w++;
 			recursiveUpdate(iElement, node.parent);
 		}
 
 		score_t elementScore(size_t iElement) const noexcept { return scores[iElement]; }
 
-		/*
+		
 		array<score_t, 3> elementQuadripartitionScores(size_t iElement) const noexcept {
-			typename Tree::QNode const& qnode = trees[iElement].qnodes.back();
-			return { qnode.xy_zw, qnode.xz_yw, qnode.xw_yz };
+			typename Tree::Node const& r = trees[iElement].nodes.back();
+			typename Tree::QNode const& R = trees[iElement].qnodes.back();
+			index_t x = r.x, y = r.y, z = r.z, w = R.w;
+			score_t shared = w * R.cow + x * R.cox + y * R.coy + z * R.coz + R.co;
+			return { R.coxy * x * y + R.cowz * w * z + shared, R.coxz * x * z + R.cowy * w * y + shared, R.cowx * w * x + R.coyz * y * z + shared };
+			//return { R.xy_zw, R.xz_yw, R.xw_yz };
 		}
 
 		void setQuadripartitionMode(bool mode) noexcept { quadMode = mode; }
-		*/
+		
 	};
 
 	namespace DriverHelper {
@@ -337,10 +360,10 @@ namespace astral_iad {
 
 	public:
 		using DataClasses = std::variant<typename Color<StepwiseColorDefaultAttributes<double> >::SharedConstData>;
-		//using BranchAnnotations = branch_annotation::BranchAnnotations<quadripartition_support::BA_QS, quadripartition_support::BA_LBB, quadripartition_support_spr44::BA_SBB, quadripartition_support::BA_CU_CASTER>;
+		using BranchAnnotations = branch_annotation::BranchAnnotations<quadripartition_support::BA_QS, quadripartition_support::BA_LBB, quadripartition_support_spr44::BA_SBB, quadripartition_support::BA_CU_CASTER>;
 
-		//static std::string constexpr DEFAULT_SUPPORT_ANNOTATION() noexcept { return "sbb"; };
-		//static std::string constexpr DEFAULT_LENGTH_ANNOTATION() noexcept { return "cu"; };
+		static std::string constexpr DEFAULT_SUPPORT_ANNOTATION() noexcept { return "sbb"; };
+		static std::string constexpr DEFAULT_LENGTH_ANNOTATION() noexcept { return "cu"; };
 
 		static std::pair<string, string> programNames() noexcept {
 			return { "astral-iad", "Accurate Species Tree ALgorithm -- InterAnchor Distance (ASTRAL-IAD)" };

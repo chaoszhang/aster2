@@ -64,7 +64,7 @@ public:
 		vector<size_t> taxonOrder;
 		for (size_t iTaxon : taxa) taxonOrder.push_back(iTaxon);
 		size_t nLeaves = taxonOrder.size();
-		size_t nBackboneLeaves = std::sqrt(nLeaves * std::log2(nLeaves));
+		size_t nBackboneLeaves = std::sqrt(nLeaves);
 		log() << "Two-step placement..." << endl;
 		{
 			v1log.log() << "Building backbone..." << endl;
