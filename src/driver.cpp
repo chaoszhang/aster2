@@ -30,8 +30,13 @@ namespace my_tool = astral_iad;
 #include "sister.hpp"
 namespace my_tool = sister;
 #else
+#ifdef QDIST4P
+#include "qdist4p.hpp"
+namespace my_tool = qdist4p;
+#else
 #include "caster.hpp"
 namespace my_tool = caster;
+#endif
 #endif
 #endif
 #endif

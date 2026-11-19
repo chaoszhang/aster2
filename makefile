@@ -1,4 +1,4 @@
-all: astral astral-iad caster sister trial wtrial wcaster
+all: astral astral-iad caster sister trial wtrial wcaster qdist4p
 
 dir:
 	g++ -v 2>&1 | tail -n 1
@@ -25,6 +25,9 @@ wtrial: dir
 
 wcaster: dir
 	g++ -std=c++20 -march=native -Ofast -D WCASTER src/driver.cpp -o bin/wcaster
+
+qdist4p: dir
+	g++ -std=c++20 -march=native -Ofast -D QDIST4P src/driver.cpp -o bin/qdist4p
 
 caster-dist: dir
 	g++ -std=c++20 -march=native -Ofast src/caster-dist.cpp -o bin/caster-dist
