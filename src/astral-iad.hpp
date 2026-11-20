@@ -218,7 +218,6 @@ public:
 		index_t x = r.x, y = r.y, z = r.z, w = R.w;
 		score_t shared = w * R.cow + x * R.cox + y * R.coy + z * R.coz + R.co;
 		return { R.coxy * x * y + R.cowz * w * z + shared, R.coxz * x * z + R.cowy * w * y + shared, R.cowx * w * x + R.coyz * y * z + shared };
-		//return { R.xy_zw, R.xz_yw, R.xw_yz };
 	}
 
 	void setQuadripartitionMode(bool mode) noexcept { quadMode = mode; }

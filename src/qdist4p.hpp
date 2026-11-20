@@ -3,7 +3,6 @@
 
 #include "stepwise_colorable.hpp"
 #include "quadripartition_support.hpp"
-#include "quadripartition_support_spr44.hpp"
 
 namespace qdist4p {
 
@@ -52,14 +51,14 @@ private:
 	struct Node {
 		index_t prev = -1, next = -1;
 	};
-	index_t X, Y, Z;
-	index_t cntX = 0, cntY = 0, cntZ = 0;
+	index_t X, Y, Z, W;
+	index_t cntX = 0, cntY = 0, cntZ = 0, cntW = 0;
 
 	vector<Node> nodes;
 	vector<score_t> rowSum;
 
 	SharedConstData const& sharedConstData;
-	score_t sxy = 0, sxz = 0, syz = 0;
+	score_t sxy = 0, sxz = 0, syz = 0, swx = 0, swy = 0, swz = 0;
 
 	void addNext(index_t from, index_t to) {
 		index_t next = nodes[from].next;
@@ -93,29 +92,41 @@ public:
 		for (index_t jTaxon = nodes[X].next; jTaxon != X; jTaxon = nodes[jTaxon].next) rowSum[jTaxon] += D[iTaxon][jTaxon];
 		for (index_t jTaxon = nodes[Y].next; jTaxon != Y; jTaxon = nodes[jTaxon].next) rowSum[jTaxon] += D[iTaxon][jTaxon];
 		for (index_t jTaxon = nodes[Z].next; jTaxon != Z; jTaxon = nodes[jTaxon].next) rowSum[jTaxon] += D[iTaxon][jTaxon];
+		for (index_t jTaxon = nodes[W].next; jTaxon != W; jTaxon = nodes[jTaxon].next) rowSum[jTaxon] += D[iTaxon][jTaxon];
 		score_t sumX = listSum(X, iTaxon);
 		score_t sumY = listSum(Y, iTaxon);
 		score_t sumZ = listSum(Z, iTaxon);
-		rowSum[iTaxon] = sumX + sumY + sumZ;
+		score_t sumW = listSum(W, iTaxon);
+		rowSum[iTaxon] = sumX + sumY + sumZ + sumW;
 		if (iColor == 0) {
 			++cntX;
 			addNext(X, iTaxon);
 			sxy += sumY;
 			sxz += sumZ;
+			swx += sumW;
 		} else if (iColor == 1) {
 			++cntY;
 			addNext(Y, iTaxon);
 			sxy += sumX;
 			syz += sumZ;
+			swy += sumW;
 		} else if (iColor == 2) {
 			++cntZ;
 			addNext(Z, iTaxon);
 			sxz += sumX;
 			syz += sumY;
+			swz += sumW;
+		} else if (iColor == 3) {
+			++cntW;
+			addNext(W, iTaxon);
+			swx += sumX;
+			swy += sumY;
+			swz += sumZ;
 		}
 		sumX = listSum(X, iTaxon);
 		sumY = listSum(Y, iTaxon);
 		sumZ = listSum(Z, iTaxon);
+		sumW = listSum(W, iTaxon);
 	}
 
 	void elementClearTaxonColor(size_t iElement, size_t iTaxon, size_t iColor) noexcept {
@@ -125,96 +136,178 @@ public:
 		for (index_t jTaxon = nodes[X].next; jTaxon != X; jTaxon = nodes[jTaxon].next) rowSum[jTaxon] -= D[iTaxon][jTaxon];
 		for (index_t jTaxon = nodes[Y].next; jTaxon != Y; jTaxon = nodes[jTaxon].next) rowSum[jTaxon] -= D[iTaxon][jTaxon];
 		for (index_t jTaxon = nodes[Z].next; jTaxon != Z; jTaxon = nodes[jTaxon].next) rowSum[jTaxon] -= D[iTaxon][jTaxon];
+		for (index_t jTaxon = nodes[W].next; jTaxon != W; jTaxon = nodes[jTaxon].next) rowSum[jTaxon] -= D[iTaxon][jTaxon];
 		score_t sumX = listSum(X, iTaxon);
 		score_t sumY = listSum(Y, iTaxon);
 		score_t sumZ = listSum(Z, iTaxon);
+		score_t sumW = listSum(W, iTaxon);
 		rowSum[iTaxon] = 0;
 		if (iColor == 0) {
 			--cntX;
 			remove(iTaxon);
 			sxy -= sumY;
 			sxz -= sumZ;
+			swx -= sumW;
 		}
 		else if (iColor == 1) {
 			--cntY;
 			remove(iTaxon);
 			sxy -= sumX;
 			syz -= sumZ;
+			swy -= sumW;
 		}
 		else if (iColor == 2) {
 			--cntZ;
 			remove(iTaxon);
 			sxz -= sumX;
 			syz -= sumY;
+			swz -= sumW;
+		}
+		else if (iColor == 3) {
+			--cntW;
+			remove(iTaxon);
+			swx -= sumX;
+			swy -= sumY;
+			swz -= sumZ;
 		}
 		sumX = listSum(X, iTaxon);
 		sumY = listSum(Y, iTaxon);
 		sumZ = listSum(Z, iTaxon);
+		sumW = listSum(W, iTaxon);
 	}
 	
 	void elementClearAndSetTaxonColor(size_t iElement, size_t iTaxon, size_t iColor, size_t jColor) noexcept {
 		if (iElement != 0) return;
 		vector<vector<score_t> > const& D = sharedConstData.dist;
 
-		score_t sumX, sumY, sumZ;
-		if (cntX <= cntY + cntZ) sumX = listSum(X, iTaxon);
-		if (cntY <= cntX + cntZ) sumY = listSum(Y, iTaxon);
-		if (cntZ <= cntX + cntY) sumZ = listSum(Z, iTaxon);
-		if (cntX > cntY + cntZ) sumX = rowSum[iTaxon] - sumY - sumZ;
-		if (cntY > cntX + cntZ) sumY = rowSum[iTaxon] - sumX - sumZ;
-		if (cntZ > cntX + cntY) sumZ = rowSum[iTaxon] - sumX - sumY;
+		score_t sumX, sumY, sumZ, sumW;
+		index_t threshold = (cntX + cntY + cntZ + cntW) / 2;
+		if (cntX <= threshold) sumX = listSum(X, iTaxon);
+		if (cntY <= threshold) sumY = listSum(Y, iTaxon);
+		if (cntZ <= threshold) sumZ = listSum(Z, iTaxon);
+		if (cntW <= threshold) sumW = listSum(W, iTaxon);
+		if (cntX > threshold) sumX = rowSum[iTaxon] - sumY - sumZ - sumW;
+		if (cntY > threshold) sumY = rowSum[iTaxon] - sumX - sumZ - sumW;
+		if (cntZ > threshold) sumZ = rowSum[iTaxon] - sumX - sumY - sumW;
+		if (cntW > threshold) sumW = rowSum[iTaxon] - sumX - sumY - sumZ;
 
 		if (iColor == 0) {
 			--cntX;
 			remove(iTaxon);
 			sxy -= sumY;
 			sxz -= sumZ;
+			swx -= sumW;
 		}
 		else if (iColor == 1) {
 			--cntY;
 			remove(iTaxon);
 			sxy -= sumX;
 			syz -= sumZ;
+			swy -= sumW;
 		}
 		else if (iColor == 2) {
 			--cntZ;
 			remove(iTaxon);
 			sxz -= sumX;
 			syz -= sumY;
+			swz -= sumW;
+		}
+		else if (iColor == 3) {
+			--cntW;
+			remove(iTaxon);
+			swx -= sumX;
+			swy -= sumY;
+			swz -= sumZ;
 		}
 		if (jColor == 0) {
 			++cntX;
 			addNext(X, iTaxon);
 			sxy += sumY;
 			sxz += sumZ;
-		} else if (jColor == 1) {
+			swx += sumW;
+		}
+		else if (jColor == 1) {
 			++cntY;
 			addNext(Y, iTaxon);
 			sxy += sumX;
 			syz += sumZ;
-		} else if (jColor == 2) {
+			swy += sumW;
+		}
+		else if (jColor == 2) {
 			++cntZ;
 			addNext(Z, iTaxon);
 			sxz += sumX;
 			syz += sumY;
+			swz += sumW;
+		}
+		else if (jColor == 3) {
+			++cntW;
+			addNext(W, iTaxon);
+			swx += sumX;
+			swy += sumY;
+			swz += sumZ;
 		}
 	}
 
 	score_t elementScore(size_t iElement) const noexcept {
 		return -(sxy * cntZ * (cntZ - 1) + sxz * cntY * (cntY - 1) + syz * cntX * (cntX - 1)) / 2;
 	}
-	/*
+	
 	array<score_t, 3> elementQuadripartitionScores(size_t iElement) const noexcept {
-		//return { element.wx[2] * element.yz[2], element.wx[1] * element.yz[1], element.wx[0] * element.yz[0] };
+		//return { R.xy_zw, R.xz_yw, R.xw_yz };
+		return { -(sxy * cntZ * cntW + swz * cntX * cntY), -(sxz * cntY * cntW + swy * cntX * cntZ), -(syz * cntX * cntW + swx * cntY * cntZ) };
 	}
-	*/
-	Color(SharedConstData const& data) noexcept : sharedConstData(data), nodes(data.nTaxa + 3), X(data.nTaxa + 0), Y(data.nTaxa + 1), Z(data.nTaxa + 2), rowSum(data.nTaxa){
-		for (index_t i = 0; i < data.nTaxa + 3; ++i) {
+
+	index_t quartetCount() const noexcept {
+		return cntX * cntY * cntZ * cntW;
+	}
+	
+	Color(SharedConstData const& data) noexcept : sharedConstData(data), nodes(data.nTaxa + 4), X(data.nTaxa + 0), Y(data.nTaxa + 1), Z(data.nTaxa + 2), W(data.nTaxa + 3), rowSum(data.nTaxa){
+		for (index_t i = 0; i < data.nTaxa + 4; ++i) {
 			nodes[i].prev = i;
 			nodes[i].next = i;
 		}
 	}
 };
+
+class BranchLength {
+public:
+	static inline string const SHORT_NAME = "len";
+	static inline string const FULL_NAME = "Branch Length";
+	static inline string const MAIN_KEY = "len";
+	static inline vector<string> const KEYS = { "len" };
+
+	template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE C> class Data {
+	public:
+		using Color = C;
+		using score_t = typename Color::score_t;
+		using index_t = typename Color::index_t;
+		static Data const ZERO;
+
+	private:
+		score_t score;
+
+	public:
+		template<typename T> static void staticInitialize(common::Random<T>& random, size_t nElmnts) noexcept {}
+
+		Data(score_t score = Color::ZERO) : score(score) {}
+
+		static array<Data, 3> map(Color& color, size_t iElement) noexcept {
+			array<score_t, 3> scores = color.elementQuadripartitionScores(iElement);
+			index_t cnt = color.quartetCount();
+			Data s0(scores[0] / cnt), s1(scores[1] / cnt), s2(scores[2] / cnt);
+			return { s0, s1, s2 };
+		}
+
+		static Data reduce(Data const& a, Data const& b) noexcept { return Data(a.score + b.score); }
+
+		static void annotate(common::AnnotatedBinaryTree::Node* node, Data const& left_right, Data const& left_outgroup, Data const& right_outgroup) noexcept {
+			node->set("len", (2 * left_right.score - left_outgroup.score - right_outgroup.score) / 4);
+		}
+	};
+};
+template<stepwise_colorable::QUADRIPARTITION_STEPWISE_COLORABLE Color> BranchLength::Data<Color> const	BranchLength::Data<Color>::ZERO = BranchLength::Data<Color>();
+using BL = quadripartition_support::BranchAnnotation<BranchLength>;
 
 namespace DriverHelper {
 
@@ -255,10 +348,10 @@ template<bool> class Driver : public common::LogInfo
 
 public:
 	using DataClasses = std::variant<typename Color<StepwiseColorDefaultAttributes<double> >::SharedConstData>;
-	using BranchAnnotations = branch_annotation::BranchAnnotations<quadripartition_support::BA_QS, quadripartition_support::BA_LBB, quadripartition_support_spr44::BA_SBB>;
+	using BranchAnnotations = branch_annotation::BranchAnnotations<BL>;
 
-	static std::string constexpr DEFAULT_SUPPORT_ANNOTATION() noexcept { return "sbb"; };
-	static std::string constexpr DEFAULT_LENGTH_ANNOTATION() noexcept { return "none"; };
+	static std::string constexpr DEFAULT_SUPPORT_ANNOTATION() noexcept { return "none"; };
+	static std::string constexpr DEFAULT_LENGTH_ANNOTATION() noexcept { return "len"; };
 
 	static std::pair<string, string> programNames() noexcept {
 		return { "qdist4p", "Quartet Distance 4-Point (QDist4P)" };
