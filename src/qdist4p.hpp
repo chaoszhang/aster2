@@ -26,7 +26,7 @@ template<typename score_type> struct StepwiseColorDefaultAttributes {
 	using score_t = score_type;
 
 	static inline score_t constexpr ZERO = 0;
-	static inline score_t constexpr EPSILON = [] { if constexpr (std::integral<score_t>) return 0; else return 1e-6; }();
+	static inline score_t constexpr EPSILON = [] { if constexpr (std::integral<score_t>) return 0; else return 1e-3; }();
 };
 
 template<STEPWISE_COLOR_ATTRIBUTES Attributes> class Color {

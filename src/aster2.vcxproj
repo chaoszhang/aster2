@@ -150,6 +150,7 @@
     <ClInclude Include="nni_algorithm.hpp" />
     <ClInclude Include="optimization_algorithm.hpp" />
     <ClInclude Include="placement_algorithm.hpp" />
+    <ClInclude Include="qdist4p.hpp" />
     <ClInclude Include="quadripartition_support_spr44.hpp" />
     <ClInclude Include="spr44.hpp" />
     <ClInclude Include="std_include.hpp" />
