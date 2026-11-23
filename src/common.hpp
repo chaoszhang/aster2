@@ -157,6 +157,15 @@ public:
 		return *this;
 	}
 
+#ifndef __STRICT_ANSI__
+	LogInfo const& operator<<(__int128 const v) const {
+		return *this << static_cast<double>(v);
+	}
+	LogInfo const& operator<<(unsigned __int128 const v) const {
+		return *this << static_cast<double>(v);
+	}
+#endif
+
 	LogInfo const& log() const noexcept {
 		if (verbose < 0) return *this << "[WARNING/ERROR] ";
 		for (int i : std::views::iota(0, verbose)) *this << " ";

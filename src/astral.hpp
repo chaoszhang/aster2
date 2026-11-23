@@ -368,6 +368,11 @@ namespace DriverHelper {
 				common::taxonName2ID[label];
 				return 1;
 			}
+			if (children.size() == 1) {
+				common::LogInfo errlog(-99);
+				errlog.log() << "Error: Invalid Newick format: Node with only one child found!" << std::endl;
+				exit(-1);
+			}
 			auto cmp = [](pair<shared_ptr<Node>,int> const &left, pair<shared_ptr<Node>,int> const &right) { return left.second < right.second; };
 			priority_queue<pair<shared_ptr<Node>, int>, vector<pair<shared_ptr<Node>, int> >, decltype(cmp)> pq(cmp);
 			for (auto& child : children) pq.push({child, child->huffman()});

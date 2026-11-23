@@ -56,6 +56,7 @@ public:
 
 		vector<Element> elements;
 		size_t nTaxa = 0;
+		size_t multiplier = 1;
 
 		size_t nElements() const noexcept { return elements.size(); }
 	};
@@ -295,6 +296,11 @@ namespace DriverHelper {
 				common::taxonName2ID[label];
 				return 1;
 			}
+			if (children.size() == 1) {
+				common::LogInfo errlog(-99);
+				errlog.log() << "Error: Invalid Newick format: Node with only one child found!" << std::endl;
+				exit(-1);
+			}
 			auto cmp = [](pair<shared_ptr<Node>, int> const& left, pair<shared_ptr<Node>, int> const& right) { return left.second < right.second; };
 			priority_queue<pair<shared_ptr<Node>, int>, vector<pair<shared_ptr<Node>, int> >, decltype(cmp)> pq(cmp);
 			for (auto& child : children) pq.push({ child, child->huffman() });
@@ -313,26 +319,34 @@ namespace DriverHelper {
 			}
 		}
 
-		template<typename Color> Color::SharedConstData::Element::Node* convert() noexcept {
+		template<typename Color> Color::SharedConstData::Element::Node* convert(size_t multiplier) noexcept {
 			using DataNode = typename Color::SharedConstData::Element::Node;
 			DataNode* node = new DataNode();
 
 			if (!children.empty()) {
-				node->lc.reset(children[0]->convert<Color>());
-				node->rc.reset(children[1]->convert<Color>());
+				node->lc.reset(children[0]->convert<Color>(multiplier));
+				node->rc.reset(children[1]->convert<Color>(multiplier));
 			}
 			else {
 				node->leafID = common::taxonName2ID[label];
 			}
 
 			optional<double> len = Newick::parseLength(length);
-			if (len) node->length = *len;
+			if (len) node->length = *len * multiplier;
 			else node->length = 0;
 			return node;
 		}
 	};
 
 	template<typename DataClass> DataClass read() {
+		size_t multiplier = 1;
+		if constexpr (std::integral<typename DataClass::ParentClass::score_t>) {
+			size_t precision = ARG.get<size_t>("precision");
+			multiplier = std::pow(10, precision);
+		}
+
+		DataClass data;
+		data.multiplier = multiplier;
 		ifstream fin(ARG.get<string>("input"));
 		string line;
 		vector<shared_ptr<Node> > trees;
@@ -342,11 +356,10 @@ namespace DriverHelper {
 			root->huffman();
 			trees.push_back(root);
 		}
-		DataClass data;
 		data.nTaxa = common::taxonName2ID.nTaxa();
 		for (auto& tree : trees) {
 			data.elements.emplace_back();
-			data.elements.back().root.reset(tree->convert<typename DataClass::ParentClass>());
+			data.elements.back().root.reset(tree->convert<typename DataClass::ParentClass>(multiplier));
 		}
 		return data;
 	}
@@ -358,7 +371,12 @@ template<bool> class Driver : public common::LogInfo
 	using string = std::string;
 
 public:
-	using DataClasses = std::variant<typename Color<StepwiseColorDefaultAttributes<double> >::SharedConstData>;
+#ifdef __STRICT_ANSI__
+	using DataClasses = std::variant<typename Color<StepwiseColorDefaultAttributes<double> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<long double> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<long long> >::SharedConstData>;
+#else
+	using DataClasses = std::variant<typename Color<StepwiseColorDefaultAttributes<double> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<long double> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<long long> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<__int128> >::SharedConstData>;
+#endif
+
 	using BranchAnnotations = branch_annotation::BranchAnnotations<quadripartition_support::BA_QS, quadripartition_support::BA_LBB, quadripartition_support_spr44::BA_SBB, quadripartition_support::BA_CU_CASTER>;
 
 	static std::string constexpr DEFAULT_SUPPORT_ANNOTATION() noexcept { return "sbb"; };
@@ -369,16 +387,26 @@ public:
 	}
 
 	static void addArguments() noexcept {
-		//ARG.addArgument('\0', "mode", "integer", "Weighting mode (1: hybrid weighting, 2: support only, 3: length only, 4: unweighted)", 0, true, true, "1");
+#ifdef __STRICT_ANSI__
+		ARG.addArgument('\0', "datatype", "integer", "1. double (float64) 2. long double (compiler dependent) 3. long long (int64)", 0, true, true, "1");
+#else
+		ARG.addArgument('\0', "datatype", "integer", "1. double (float64) 2. long double (compiler dependent) 3. long long (int64) 4. __int128 (int128)", 0, true, true, "1");
+#endif
+		ARG.addArgument('\0', "precision", "integer", "Precision for rounding in digits (integer mode only)", 0, true, true, "5");
 	}
 
 	static DataClasses getStepwiseColorSharedConstData() noexcept {
-		//size_t mode = ARG.get<size_t>("mode");
-		return DriverHelper::read<typename Color<StepwiseColorDefaultAttributes<double> >::SharedConstData>();
+		size_t datatype = ARG.get<size_t>("datatype");
+		if (datatype == 1) return DriverHelper::read<typename Color<StepwiseColorDefaultAttributes<double> >::SharedConstData>();
+		if (datatype == 2) return DriverHelper::read<typename Color<StepwiseColorDefaultAttributes<long double> >::SharedConstData>();
+		if (datatype == 3) return DriverHelper::read<typename Color<StepwiseColorDefaultAttributes<long long> >::SharedConstData>();
+#ifndef __STRICT_ANSI__
+		if (datatype == 4) return DriverHelper::read<typename Color<StepwiseColorDefaultAttributes<__int128> >::SharedConstData>();
+#endif
 
-		//common::LogInfo vlog(-99);
-		//vlog.log() << "Error: Invalid mode: " << mode << std::endl;
-		//exit(-1);
+		common::LogInfo vlog(-99);
+		vlog.log() << "Error: Invalid datatype: " << datatype << std::endl;
+		exit(-1);
 	}
 };
 

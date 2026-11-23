@@ -42,7 +42,7 @@ public:
 		using ParentClass = Color;
 
 		vector<vector<score_t> > dist;
-		index_t nTaxa = 0;
+		index_t nTaxa = 0, multiplier = 1;
 
 		size_t nElements() const noexcept { return 1; }
 	};
@@ -268,6 +268,8 @@ public:
 			nodes[i].next = i;
 		}
 	}
+
+	index_t multiplier() const noexcept { return sharedConstData.multiplier; }
 };
 
 class BranchLength {
@@ -286,23 +288,25 @@ public:
 
 	private:
 		score_t score;
+		index_t cnt, multiplier;
 
 	public:
 		template<typename T> static void staticInitialize(common::Random<T>& random, size_t nElmnts) noexcept {}
 
-		Data(score_t score = Color::ZERO) : score(score) {}
+		Data(score_t score = Color::ZERO, index_t count = 0, index_t multiplier = 1) : score(score), cnt(count), multiplier(multiplier) {}
 
 		static array<Data, 3> map(Color& color, size_t iElement) noexcept {
 			array<score_t, 3> scores = color.elementQuadripartitionScores(iElement);
 			index_t cnt = color.quartetCount();
-			Data s0(scores[0] / cnt), s1(scores[1] / cnt), s2(scores[2] / cnt);
+			Data s0(scores[0], cnt, color.multiplier()), s1(scores[1], cnt, color.multiplier()), s2(scores[2], cnt, color.multiplier());
 			return { s0, s1, s2 };
 		}
 
-		static Data reduce(Data const& a, Data const& b) noexcept { return Data(a.score + b.score); }
+		static Data reduce(Data const& a, Data const& b) noexcept { return Data(a.score + b.score, std::max(a.cnt, b.cnt), std::max(a.multiplier, b.multiplier)); }
 
 		static void annotate(common::AnnotatedBinaryTree::Node* node, Data const& left_right, Data const& left_outgroup, Data const& right_outgroup) noexcept {
-			node->set("len", (2 * left_right.score - left_outgroup.score - right_outgroup.score) / 4);
+			double len = (2.0 * left_right.score - left_outgroup.score - right_outgroup.score) / (4.0 * left_right.cnt * left_right.multiplier);
+			node->set("len", len);
 		}
 	};
 };
@@ -314,7 +318,14 @@ namespace DriverHelper {
 	using namespace std;
 
 	template<typename DataClass> DataClass read() {
+		size_t multiplier = 1;
+		if constexpr (std::integral<typename DataClass::ParentClass::score_t>) {
+			size_t precision = ARG.get<size_t>("precision");
+			multiplier = std::pow(10, precision);
+		}
+
 		DataClass data;
+		data.multiplier = multiplier;
 		ifstream fin(ARG.get<string>("input"));
 		int nTaxa;
 		fin >> nTaxa;
@@ -333,7 +344,9 @@ namespace DriverHelper {
 				exit(-1);
 			}
 			for (int j = 0; j < nTaxa; ++j) {
-				fin >> data.dist[i][j];
+				double dist;
+				fin >> dist;
+				data.dist[i][j] = dist * data.multiplier;
 			}
 
 		}
@@ -347,7 +360,12 @@ template<bool> class Driver : public common::LogInfo
 	using string = std::string;
 
 public:
-	using DataClasses = std::variant<typename Color<StepwiseColorDefaultAttributes<double> >::SharedConstData>;
+#ifdef __STRICT_ANSI__
+	using DataClasses = std::variant<typename Color<StepwiseColorDefaultAttributes<double> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<long double> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<long long> >::SharedConstData>;
+#else
+	using DataClasses = std::variant<typename Color<StepwiseColorDefaultAttributes<double> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<long double> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<long long> >::SharedConstData, typename Color<StepwiseColorDefaultAttributes<__int128> >::SharedConstData>;
+#endif
+	
 	using BranchAnnotations = branch_annotation::BranchAnnotations<BL>;
 
 	static std::string constexpr DEFAULT_SUPPORT_ANNOTATION() noexcept { return "none"; };
@@ -358,16 +376,26 @@ public:
 	}
 
 	static void addArguments() noexcept {
-		//ARG.addArgument('\0', "mode", "integer", "Weighting mode (1: hybrid weighting, 2: support only, 3: length only, 4: unweighted)", 0, true, true, "1");
+#ifdef __STRICT_ANSI__
+		ARG.addArgument('\0', "datatype", "integer", "1. double (float64) 2. long double (compiler dependent) 3. long long (int64)", 0, true, true, "1");
+#else
+		ARG.addArgument('\0', "datatype", "integer", "1. double (float64) 2. long double (compiler dependent) 3. long long (int64) 4. __int128 (int128)", 0, true, true, "1");
+#endif
+		ARG.addArgument('\0', "precision", "integer", "Precision for rounding in digits (integer mode only)", 0, true, true, "5");
 	}
 
 	static DataClasses getStepwiseColorSharedConstData() noexcept {
-		//size_t mode = ARG.get<size_t>("mode");
-		return DriverHelper::read<typename Color<StepwiseColorDefaultAttributes<double> >::SharedConstData>();
+		size_t datatype = ARG.get<size_t>("datatype");
+		if (datatype == 1) return DriverHelper::read<typename Color<StepwiseColorDefaultAttributes<double> >::SharedConstData>();
+		if (datatype == 2) return DriverHelper::read<typename Color<StepwiseColorDefaultAttributes<long double> >::SharedConstData>();
+		if (datatype == 3) return DriverHelper::read<typename Color<StepwiseColorDefaultAttributes<long long> >::SharedConstData>();
+#ifndef __STRICT_ANSI__
+		if (datatype == 4) return DriverHelper::read<typename Color<StepwiseColorDefaultAttributes<__int128> >::SharedConstData>();
+#endif
 
-		//common::LogInfo vlog(-99);
-		//vlog.log() << "Error: Invalid mode: " << mode << std::endl;
-		//exit(-1);
+		common::LogInfo vlog(-99);
+		vlog.log() << "Error: Invalid datatype: " << datatype << std::endl;
+		exit(-1);
 	}
 };
 
